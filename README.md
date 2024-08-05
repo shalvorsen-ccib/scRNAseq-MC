@@ -1,2 +1,1 @@
-# scRNAseq-MC
-Microscopic Colitis scRNAseq code
+This repository contains the code used in our publication on the profiling of Microscopic Colitis patients using single-cell RNA sequencing. The code for transforming the raw inDrops reads into files ready for mapping is found in the "inDrops_Processing" folder. The R code for generating the figures is found in the "R_Figures" directory.
