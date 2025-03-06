@@ -1,0 +1,2288 @@
+---
+title: "MC_Figures"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+#Packages and Data
+packages:
+```{r}
+library(tidyverse)
+library(Seurat)
+library(grid)
+library(gtable)
+library(gridExtra)
+library(rstatix)
+library(ggpubr)
+library(reshape2)
+library(vegan)
+library(edgeR)
+library(readxl)
+library(ggtext)
+library(plyr)
+
+
+
+options(stringsAsFactors = FALSE)
+```
+
+
+Functions from MC_Misc_Functions.rmd will be called. Make sure to load those functions first.
+
+
+
+Load in the data. Files are referenced from analysis_dir. Change to match your folder structure.
+```{r}
+analysis_dir <- "/R/Khalili/pubPackage/"
+
+sourced_dir <- paste(analysis_dir, "Source_Data", sep="/")
+if(!dir.exists(sourced_dir)){
+  dir.create(sourced_dir, recursive = T)
+}
+
+
+fig_dir <- paste(analysis_dir, "Figures", "Fig_Panels_Final", sep="/")
+if(!dir.exists(fig_dir)){
+  dir.create(fig_dir, recursive = T)
+}
+
+marks_dir <- paste(analysis_dir, "Markers", sep="/")
+if(!dir.exists(marks_dir)){
+  dir.create(marks_dir, recursive = T)
+}
+
+setwd(analysis_dir)
+
+har_file <- paste(analysis_dir, "Data", "MC_seurat_pub.rbin", sep="/")
+imm_sub_file <- paste(analysis_dir, "Data", "MC_imm_sub_seurat_pub.rbin", sep="/")
+imm_sub_2_file <- paste(analysis_dir, "Data", "MC_imm_sub_2_seurat_pub.rbin", sep="/")
+
+
+
+load(file=har_file, verbose = T)
+load(file=imm_sub_file, verbose = T)
+load(file=imm_sub_2_file, verbose = T)
+
+
+cluster_labs <- read.delim(paste(analysis_dir, "DEG_Plot_Group.txt", sep="/"))
+
+all_cyt <- read.delim(paste(analysis_dir, "GO_lists", "GO_Cytokine-activity.txt", sep="/"), header = F, stringsAsFactors = F)
+proinf <- read.delim(paste(analysis_dir, "GO_lists", "GO_pos-reg-inf-resp.txt", sep="/"), header = F, stringsAsFactors = F)
+antinf <- read.delim(paste(analysis_dir, "GO_lists", "GO_neg-reg-inf-resp.txt", sep="/"), header = F, stringsAsFactors = F)
+all_chem <- read.delim(paste(analysis_dir, "GO_lists", "GO_chemokine-activity.txt", sep="/"), header = F, stringsAsFactors = F)
+
+
+
+exp_ctype <- read.csv("barcode_to_clonotype.csv")
+all_clonotype_freqs <- read.csv("clonotype_props.csv")
+
+data_file <- paste(analysis_dir, "MC_IHC_Counts_Anon.xlsx", sep="/")
+
+h_counts <- read_excel(path = data_file, sheet = "Unaffected")
+cd_counts <- read_excel(path = data_file, sheet = "CD")
+mc_counts <- read_excel(path = data_file, sheet = "MC")
+
+
+
+rnascope_cd8_ilastik <- read.csv(file=paste(analysis_dir, "Histology", "RNAscope_CD8_panel1_Ilastik_counts.csv", sep="/"))
+rnascope_counts_cd8_2 <- read.csv(file=paste(analysis_dir, "Histology", "RNAscope_CD8_panel2_CellProfiler_counts.csv", sep="/"))
+rnascope_cd8_2_ilastik <- read.csv(file=paste(analysis_dir, "Histology", "RNAscope_CD8_panel2_Ilastik_counts.csv", sep="/"))
+rnascope_cd4_ilastik <- read.csv(file=paste(analysis_dir, "Histology", "RNAscope_CD4_Ilastik_counts.csv", sep="/"))
+
+```
+
+
+#Fig. 2
+
+
+UMAP
+```{r}
+#list of all genes that need to be changed to italics etc. in this and future code sections
+gene_mod <- c("Gzm", "GZMK", "NCR3", "KLRC1", "NR4A", "CD137", "GNLY", "ANXA1", "IL4I1", "HLA-DR", "TNFR", "CD16", "MMP12", "KLF6", "NCAM1", "LTB", "CSF2", "CCL4", "S100B")
+
+
+seur_har$imm@meta.data$ident_PLOT <- factor(seur_har$imm@meta.data$ident_PLOT, levels=sort(unique(seur_har$imm@meta.data$ident_PLOT)))
+seur_har$imm <- SetIdent(seur_har$imm, value="ident_PLOT")
+
+
+seur_har$imm <- format_for_umap(seur_har$imm, "ident_PLOT", "ident_PLOT_format", c())
+seur_har$imm@meta.data$ident_PLOT_format <- factor(seur_har$imm@meta.data$ident_PLOT_format, levels=sort(unique(seur_har$imm@meta.data$ident_PLOT_format)))
+seur_har$imm <- SetIdent(seur_har$imm, value = "ident_PLOT_format")
+
+tmp_plot <- DimPlot_format(seur_har$imm, group.by="ident_PLOT_format")
+
+pdf(file=paste(fig_dir, "Fig2_UMAP_imm.pdf", sep="/"), width = 4.5, height=4.5)
+print(tmp_plot)
+dev.off()
+
+
+jpeg(file=paste(fig_dir, "Fig2_UMAP_imm.jpg", sep="/"), width = 4.5, height=4.5, units="in", res=300)
+print(tmp_plot)
+dev.off()
+```
+
+
+DotPlot
+
+```{r}
+seur_har$imm <- format_seur_for_plot(seur_har$imm, "ident_PLOT", "ident_PLOT_format", c())
+
+seur_har$imm@meta.data$ident_PLOT_format <- factor(seur_har$imm@meta.data$ident_PLOT_format, levels=sort(unique(seur_har$imm@meta.data$ident_PLOT_format)))
+seur_har$imm <- SetIdent(seur_har$imm, value = "ident_PLOT_format")
+
+
+features.plot <- c("TNFRSF13B", "MS4A1", "CD79A", "RGS13", "SELL", "IGHD", "MKI67", "IL7R", "KIT", "TPSB2", "C1QA", "CD68", "FCER1G", "NCAM1", "SDC1", "IGHA1","CD3D", "CD4", "CD8A", "TRDC", "TRGC2")
+
+
+pdf(file=paste(fig_dir, "Fig2_DotPlot_imm.pdf", sep="/"), width = 4, height=5)
+tmp <- DotPlot(seur_har$imm, "RNA", features.plot) + coord_flip() + theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0.5), axis.text.y = element_text(size=10))+ guides(size=guide_legend(title = "Perc.\nExp.")) + theme(axis.title = element_blank())
+tmp$guides$colour$title <- "Ave.\nExp."
+print(tmp + theme(axis.text.x = element_markdown(), axis.text.y = element_text(face = "italic")))
+dev.off()
+```
+
+
+stacked bar plot
+```{r}
+
+pdf(file=paste(fig_dir, "Fig2_PropPlot_imm.pdf", sep="/"), width = 4.5, height=3)
+print(generate_patient_proportion_plot(seur_har$imm, ident_var = "ident_PLOT_format", group_var = "Cohort", group_selection = c("Active_MC", "Chron_Diarr", "Unaffected")) + ylab("Enrichment") + xlab("") + theme(legend.position="bottom", axis.text.x = element_markdown(margin=margin(b=-0.75, unit='cm'))) + labs(fill=""))
+dev.off()
+```
+
+
+Boxplots
+CD8 Boxplot
+```{r}
+p1 <- make_boxplot(seur_har$imm, ident_var = "ident_PLOT", c("T CD8+"), selected_name = "CD8 T Cells", selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  guides(fill=F) +
+  theme(axis.text.x = element_blank()) +
+  theme(plot.title = element_markdown())
+p2 <- make_boxplot(seur_har$imm, ident_var = "ident_PLOT", c("T CD4+"), selected_name = "CD4 T Cells", selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  guides(fill=F) +
+  theme(axis.text.x = element_blank(), axis.title.y = element_blank()) +
+  theme(plot.title = element_markdown())
+p3 <- make_boxplot(seur_har$imm, ident_var = "ident_PLOT", c("B Activated", "B GC", "B Naive"), selected_name = "B Cells", selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  guides(fill=F) +
+  theme(axis.text.x = element_blank()) +
+  theme(plot.title = element_markdown())
+p4 <- make_boxplot(seur_har$imm, ident_var = "ident_PLOT", c("Macrophage", "Monocyte", "Mast", "Neutrophil", "DC"), selected_name = "Myeloid Cells", selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  guides(fill=F) +
+  theme(axis.text.x = element_blank(), axis.title.y = element_blank()) +
+  theme(plot.title = element_markdown())
+
+
+tmp <- p1$data
+tmp$CellGroup <- "T_CD8"
+source_data <- tmp
+tmp <- p2$data
+tmp$CellGroup <- "T_CD4"
+source_data <- rbind(source_data, tmp)
+tmp <- p3$data
+tmp$CellGroup <- "B"
+source_data <- rbind(source_data, tmp)
+tmp <- p4$data
+tmp$CellGroup <- "Myeloid"
+source_data <- rbind(source_data, tmp)
+source_data <- source_data[,c("Patient", "Cohort", "CellGroup", "prop_selected")]
+write.csv(source_data, file=paste(sourced_dir, "SourceData_Fig2D.csv", sep="/"), row.names = F)
+
+
+g1 <- ggplotGrob(p1)
+g2 <- ggplotGrob(p2)
+g3 <- ggplotGrob(p3)
+g4 <- ggplotGrob(p4)
+g <- gtable_matrix(name="MC", grobs = matrix(list(g1, g3, g2, g4), nrow=2), 
+                   widths = unit(c(2, 1.9), "in"), 
+                   heights = unit(c(1.75, 1.75), c("in")))
+
+pdf(file=paste(fig_dir, "Fig2_BoxPlots.pdf", sep="/"), width = 4, height=4)
+grid.newpage()
+grid.draw(g)
+dev.off()
+
+```
+
+
+
+
+
+Cycling cells panels:
+
+```{r}
+cycling_subset <- imm_sub$`Cycling Cell`
+```
+
+
+
+Boxplot:
+```{r}
+cycling_subset@meta.data$ident_L2_plot <- cycling_subset@meta.data$ident_L2
+cycling_subset@meta.data$ident_L2_plot <- gsub(cycling_subset@meta.data$ident_L2_plot, pattern = "CD4\\+", replacement = "CD4")
+cycling_subset@meta.data$ident_L2_plot <- gsub(cycling_subset@meta.data$ident_L2_plot, pattern = "CD8\\+", replacement = "CD8")
+
+tmp <- make_boxplot_idents_separate(cycling_subset,
+                             ident_var = "ident_L2_plot",
+                             selected_name = "Cycling Cells",
+                             selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  theme(axis.title.x=element_blank(),
+        legend.position = "bottom",
+        axis.text.x = element_markdown(margin=margin(b=-0.4, unit='cm')))
+
+source_data <- tmp$data
+source_data <- source_data[,c("Patient", "Cohort", "ident_L2_plot", "prop")]
+colnames(source_data)[3] <- "Identity"
+write.csv(source_data, file=paste(sourced_dir, "SourceData_Fig2F.csv", sep="/"), row.names = F)
+
+
+pdf(file=paste(fig_dir, "Fig2_BoxPlot_CD8_cycling_enrichment.pdf", sep="/"), width = 4, height=2.5)
+  print(tmp)
+dev.off()
+```
+
+
+stacked violin plot
+```{r}
+#remake factor so that the levels are sorted alphabetically
+cycling_subset@meta.data$ident_L2_plot <- as.factor(cycling_subset@meta.data$ident_L2_plot)
+cycling_subset <- SetIdent(cycling_subset, val="ident_L2_plot")
+
+
+features.plot <- c("MKI67", "CD79A", "MS4A1", "CPA3", "LYZ", "JCHAIN", "CD4", "CD8A", "TRDC", "ITGAE")
+
+
+pdf(file=paste(fig_dir, "Fig2_stacked_violin_cycling.pdf", sep="/"), width = 3, height=3.5)
+StackedVlnPlot(cycling_subset, features.plot)
+dev.off()
+
+```
+
+
+
+
+#Fig. 3
+Print UMAP
+```{r}
+cd8_subset <- imm_sub_2$`T CD8+`
+
+
+cd8_subset@meta.data$ident_L3 <- substr(cd8_subset@meta.data$ident_L3, nchar("T CD8+ ") + 1, max(nchar(cd8_subset@meta.data$ident_L3)))
+cd8_subset <- SetIdent(cd8_subset, value = "ident_L3")
+
+cd8_gene_mod <- c("Gzm", "GZMK", "CD8", "NCR3", "KLRC1", "NR4A", "CD137", "GNLY")
+
+
+pdf(file=paste(fig_dir, "Fig3_umap.pdf", sep="/"), width = 5, height=5)
+tmp <- format_plot_umap_with_num(cd8_subset, "ident_L3", cd8_gene_mod, lp="bottom", nc=2)
+dev.off()
+```
+
+
+Stacked violin plot
+```{r}
+cd8_subset <- format_seur_for_plot(cd8_subset, "ident_L3", "ident_L3_plot", cd8_gene_mod)
+cd8_subset@meta.data$ident_L3_plot <- factor(cd8_subset@meta.data$ident_L3_plot, levels=sort(unique(cd8_subset@meta.data$ident_L3_plot)))
+cd8_subset <- SetIdent(cd8_subset, value = "ident_L3_plot")
+
+
+features.plot <- c("CD8A", "ITGAE", "GZMK","KLRG1","NCR3", "SELL", "GNLY", "GZMA", "GZMB", "PRF1","TNFRSF9","KLRC1", "NR4A2", "IFNG")
+
+pdf(file=paste(fig_dir, "Fig3_stacked_violin.pdf", sep="/"), width = 3.5, height=6)
+StackedVlnPlot(cd8_subset, features.plot, y_3_pt = T)
+dev.off()
+
+```
+
+
+
+Proportion plots
+```{r}
+pdf(file=paste(fig_dir, "Fig3_PropPlot.pdf", sep="/"), width = 3, height=2.5)
+print(generate_patient_proportion_plot(cd8_subset, ident_var = "ident_L3_plot", group_var = "Cohort", group_selection = c("Active_MC", "Chron_Diarr", "Unaffected")) + ylab("Enrichment") + xlab("") + theme(legend.position="bottom", axis.text.x = element_markdown(margin=margin(b=-0.75, unit='cm')))+ guides(fill=F)) 
+dev.off()
+```
+
+
+Boxplot
+CD8 Trm Boxplot
+```{r}
+tmp <- make_boxplot_idents_separate(cd8_subset, ident_var = "ident_L3_plot", selected_name = "CD8 T Cells", selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x.bottom = element_markdown(),
+        legend.position = "bottom",
+        axis.text.x = element_text(margin=margin(b=-0.4, unit='cm'))) +
+  labs(fill="") +
+  theme(plot.title = element_markdown())
+
+source_data <- tmp$data
+colnames(source_data)[3] <- "Identity"
+source_data <- source_data[,c("Patient", "Cohort", "Identity", "prop")]
+write.csv(source_data, file=paste(sourced_dir, "SourceData_Fig3D.csv", sep="/"), row.names = F)
+
+
+
+
+pdf(file=paste(fig_dir, "Fig3_BoxPlot_CD8_Trm_vs_CD8_groupsSeparate.pdf", sep="/"), width = 5, height=3.25)
+  print(tmp)
+dev.off()
+
+```
+
+
+
+
+
+#Fig. 4
+
+```{r}
+all_clonotype_freqs <- as_tibble(all_clonotype_freqs) %>% separate(clonotype_id, into = c("Sample", "clonotype"), sep="_clonotype")
+
+
+patient_meta <- seur_har$imm@meta.data[,c("Patient", "Cohort")]
+patient_meta <- patient_meta[!duplicated(patient_meta),]
+
+
+all_clonotype_freqs <- all_clonotype_freqs %>% left_join(patient_meta, by=c("Sample" = "Patient"))
+
+#format cohort names for plot:
+all_clonotype_freqs <- all_clonotype_freqs %>%
+  mutate(Cohort=case_when(Cohort=="Active_MC" ~ "Active MC",
+                          Cohort=="Chron_Diarr" ~ "Chronic Diarrhea",
+                          T ~ Cohort))
+
+
+
+#Do a stacked bar plot:
+
+pdf(file=paste(fig_dir, "Fig4_BarPlot_Clonotypes.pdf", sep="/"), width = 6, height=4)
+g <- ggplot(all_clonotype_freqs, aes(x = Sample, fill = Cohort, y = proportion, group=clonotype)) +
+  geom_bar(stat = "identity", position="fill", colour="black") +
+  guides(fill=F) +
+  labs(y="Proportion of clonotypes", x="Sample") +
+  facet_wrap(~Cohort, scales = "free_x") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1))
+print(g)
+dev.off()
+
+
+```
+
+
+Diversity
+```{r}
+shannon_diversity <- all_clonotype_freqs %>% group_by(Sample) %>% dplyr::summarize(Cohort=unique(Cohort), Diversity=diversity(frequency, index="shannon"))
+
+
+write.csv(shannon_diversity, file=paste(sourced_dir, "SourceData_Fig4B.csv", sep="/"), row.names = F)
+
+
+
+pdf(file=paste(fig_dir, "Fig4_Boxplot_TCR-Diversity.pdf", sep="/"), width = 3, height=3)
+ggplot(shannon_diversity, aes(x=Cohort, y=Diversity)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15) +
+  ylab("Shannon Diversity")
+dev.off()
+```
+
+
+
+Load in the clonotypes and mark which are "expanded" (have at least 2 cells)
+```{r}
+exp_ctype <- exp_ctype[!duplicated(exp_ctype),]
+
+ctype_meta <- seur_har$imm@meta.data[,"ident_L3",drop=F]
+ctype_meta$Barcode <- rownames(ctype_meta)
+ctype_meta <- merge(ctype_meta, exp_ctype[,1:2], all.x=T)
+
+#expanded clonotypes are present in >= 2 cells:
+tmp <- table(ctype_meta$Clonotype)
+ctype_exp <- names(tmp[tmp>1])
+ctype_sin <- names(tmp[tmp==1])
+
+ctype_meta$expanded_clonotype <- NA
+ctype_meta$clonotype_detected <- "N"
+
+ctype_meta[ctype_meta$Clonotype %in% ctype_exp, "expanded_clonotype"] <- "Y"
+ctype_meta[ctype_meta$Clonotype %in% ctype_sin, "expanded_clonotype"] <- "N"
+ctype_meta[ctype_meta$Clonotype %in% ctype_exp, "clonotype_detected"] <- "Y"
+ctype_meta[ctype_meta$Clonotype %in% ctype_sin, "clonotype_detected"] <- "Y"
+
+
+ctype_meta <- ctype_meta[,-c(2)]
+ctype_meta <- as.data.frame(ctype_meta)
+rownames(ctype_meta) <- ctype_meta$Barcode
+ctype_meta <- ctype_meta[,-c(1)]
+
+imm_sub$T_NK <- AddMetaData(imm_sub$T_NK, ctype_meta)
+imm_sub_2$`T CD4+` <- AddMetaData(imm_sub_2$`T CD4+`, ctype_meta)
+imm_sub_2$`T CD8+` <- AddMetaData(imm_sub_2$`T CD8+`, ctype_meta)
+imm_sub_2$`T GD` <- AddMetaData(imm_sub_2$`T GD`, ctype_meta)
+imm_sub$`Cycling Cell` <- AddMetaData(imm_sub$`Cycling Cell`, ctype_meta)
+```
+
+
+Illustrate which ctypes are expanded in the CD8 T cells:
+```{r}
+mc <- subset(imm_sub_2$`T CD8+`, Cohort=="Active_MC")
+cd <- subset(imm_sub_2$`T CD8+`, Cohort=="Chron_Diarr")
+he <- subset(imm_sub_2$`T CD8+`, Cohort=="Unaffected")
+
+
+p1 <- DimPlot(mc, group.by = "expanded_clonotype", cols=c("gray90", "red"), na.value = "gray90", pt.size = 0.2) +
+  guides(color=F) +
+  ggtitle("Active MC") +
+  scale_colour_manual(values = alpha(c("gray80", "red"), c(0.4, 1)), na.value=alpha("gray80", 0.4))
+p2 <- DimPlot(cd, group.by = "expanded_clonotype", cols=c("gray90", "red"), na.value = "gray90") +
+  guides(color=F) +
+  ggtitle("Chronic Diarrhea") +
+  scale_colour_manual(values = alpha(c("gray80", "red"), c(0.4, 1)), na.value=alpha("gray80", 0.4))
+p3 <- DimPlot(he, group.by = "expanded_clonotype", cols=c("gray90", "red"), na.value = "gray90") +
+  ggtitle("Unaffected") +
+  scale_colour_manual(values = alpha(c("gray80", "red"), c(0.4, 1)),
+                      na.value=alpha("gray80", 0.4),
+                      limits=c("N", "Y"),
+                      name="Expanded\nClonotype")
+p1$layers[[1]]$aes_params$shape <- "."
+p2$layers[[1]]$aes_params$shape <- "."
+p3$layers[[1]]$aes_params$shape <- "."
+
+```
+
+clonotype sharing between clusters, grouped by cohort. Add Cycling CD8 cells in with the other CD8 cells, then make heatmap:
+```{r}
+
+get_num_shared_ctype <- function(.x, meta){
+  meta <- subset(meta, !is.na(meta[,"Clonotype"]))
+  .c1 <- .x[1]
+  .c2 <- .x[2]
+  ctype1 <- unique(subset(meta, ident_L3==.c1)[,"Clonotype"])
+  ctype2 <- unique(subset(meta, ident_L3==.c2)[,"Clonotype"])
+  to_ret <- c(.c1, .c2, length(intersect(ctype1, ctype2)))
+  names(to_ret) <- c("clust1", "clust2", "num_shared_ctype")
+  to_ret
+}
+
+cyc_meta <- imm_sub$`Cycling Cell`@meta.data
+cyc_meta <- subset(cyc_meta, ident_L3=="Cycling T CD8+")
+
+col_sel <- c("Cohort", "Clonotype", "ident_L3")
+
+cd8_meta <- imm_sub_2$`T CD8+`@meta.data
+comb_meta <- cd8_meta[,col_sel]
+comb_meta <- rbind(comb_meta, cyc_meta[,col_sel])
+
+clusts <- unique(comb_meta$ident_L3)
+num_clust <- length(clusts)
+clust1 <- rep(clusts, times=num_clust)
+clust2 <- rep(clusts, each=num_clust)
+
+shared_ctype_clust <- data.frame("clust1"=clust1, "clust2"=clust2)
+
+
+
+shared_ctype_clust_mc <- as.data.frame(t(apply(shared_ctype_clust, MARGIN = 1, get_num_shared_ctype, meta=subset(comb_meta, Cohort=="Active_MC"))))
+shared_ctype_clust_mc$Cohort <- "Active MC"
+shared_ctype_clust_cd <- as.data.frame(t(apply(shared_ctype_clust, MARGIN = 1, get_num_shared_ctype, meta=subset(comb_meta, Cohort=="Chron_Diarr"))))
+shared_ctype_clust_cd$Cohort <- "Chronic Diarrhea"
+shared_ctype_clust_he <- as.data.frame(t(apply(shared_ctype_clust, MARGIN = 1, get_num_shared_ctype, meta=subset(comb_meta, Cohort=="Unaffected"))))
+shared_ctype_clust_he$Cohort <- "Unaffected"
+shared_ctype_clust <- rbind(shared_ctype_clust_mc, shared_ctype_clust_cd, shared_ctype_clust_he)
+
+
+shared_ctype_clust$shared_ctype_txt <- shared_ctype_clust$num_shared_ctype
+shared_ctype_clust[shared_ctype_clust$clust1==shared_ctype_clust$clust2, "num_shared_ctype"] <- 0
+shared_ctype_clust$type <- "shared"
+shared_ctype_clust[shared_ctype_clust$clust1==shared_ctype_clust$clust2, "type"] <- "total"
+
+shared_ctype_clust$clust1 <- gsub(pattern = "T CD8\\+ ", replacement = "", x = shared_ctype_clust$clust1)
+shared_ctype_clust$clust2 <- gsub(pattern = "T CD8\\+ ", replacement = "", x = shared_ctype_clust$clust2)
+shared_ctype_clust$clust1 <- gsub(pattern = "T CD8\\+", replacement = "", x = shared_ctype_clust$clust1)
+shared_ctype_clust$clust2 <- gsub(pattern = "T CD8\\+", replacement = "", x = shared_ctype_clust$clust2)
+
+shared_ctype_clust_format <- format_for_heatmap(shared_ctype_clust, "clust1", "clust1_format", gene_mod)
+shared_ctype_clust_format <- format_for_heatmap(shared_ctype_clust_format, "clust2", "clust2_format", gene_mod)
+shared_ctype_clust_format$clust1 <- shared_ctype_clust_format$clust1_format
+shared_ctype_clust_format$clust2 <- shared_ctype_clust_format$clust2_format
+
+source_data <- shared_ctype_clust_format
+source_data <- source_data[, c(1:6)]
+source_data <- source_data[, -c(3)]
+write.csv(source_data, file=paste(sourced_dir, "SourceData_Fig4D.csv", sep="/"), row.names = F)
+
+
+
+tabs <- ggplot(shared_ctype_clust_format, aes(x=clust1, y=clust2, fill=as.numeric(num_shared_ctype))) +
+  geom_tile(data=subset(shared_ctype_clust_format, clust1==clust2), fill="gray40") +
+  geom_tile(lwd=0.5, col="black", aes(alpha=type)) +
+  geom_text(aes(label=shared_ctype_txt, col=type), size=2.5) +
+  scale_fill_gradient(low = "white", high = "red", name="Number of\nShared\nClonotypes") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle=45, hjust=1, vjust=1), axis.title = element_blank()) +
+  scale_colour_manual(values=c("total"="white", "shared"="black"), aesthetics = c("colour")) +
+  scale_alpha_manual(values=c("total"=0, "shared"=1)) +
+  guides(fill=guide_colorbar(title.theme = element_text(margin = margin(b=0)))) +
+  guides(alpha=guide_legend(override.aes = list(alpha=c(1,1), fill=c("white", "gray40"), label="0"), title = "Clonotype\nClassification"), color=guide_legend(title="Clonotype\nClassification", title.theme = element_text(margin = margin(b=0, r=0)))) + facet_wrap(~Cohort) + theme(axis.text.x=element_markdown(), axis.text.y=element_markdown())
+print(tabs)
+```
+
+
+Combine plots into final:
+```{r}
+p1 <- p1 + theme(axis.title = element_blank(), plot.title = element_text(hjust = 0.5))
+p2 <- p2 + theme(axis.title = element_blank(), plot.title = element_text(hjust = 0.5), axis.text.y = element_blank())
+p3 <- p3 + theme(axis.title = element_blank(), plot.title = element_text(hjust = 0.5), axis.text.y = element_blank()) +  guides(color = guide_legend(override.aes = list(size=2, shape=19)))
+
+
+pdf(file=paste(fig_dir, "Fig4_CD8_Clonotype_UMAP-and-table.pdf", sep="/"), width = 10, height=7)
+(p1 + p2 + p3) / (tabs + theme(strip.text = element_blank()))
+dev.off()
+```
+
+
+
+Fisher's test on clonotype sharing for each cluster, by cohort:
+```{r}
+get_shared <- function(.x, .y){
+  clusts <- unique(.x %>% pull("ident_L3"))
+  if(length(clusts) > 1){
+    shared <- "Y"
+  }
+  else{
+    shared <- "N"
+  }
+  data.frame("shared_ct"=shared)
+}
+
+run_fisher <- function(.df, .y){
+  .cont <- .df %>%
+    group_by(Cohort) %>%
+    filter(!duplicated(Clonotype)) %>%
+    dplyr::summarise(shared=sum(shared_ct=="Y"),
+              unique=sum(shared_ct=="N"))
+  .cont_cd <- .cont %>% filter(Cohort %in% c("Active_MC", "Chron_Diarr"))
+  .cont_he <- .cont %>% filter(Cohort %in% c("Active_MC", "Unaffected"))
+  .cd_p <- fisher.test(.cont_cd[,2:3])$p.value
+  .he_p <- fisher.test(.cont_he[,2:3])$p.value
+  return(data.frame("comp"=c("CD", "Unaffected"), "p_val"=c(.cd_p, .he_p)))
+}
+
+
+comb_sharing <- as_tibble(comb_meta) %>%
+  filter(!is.na(Clonotype)) %>%
+  group_by(Clonotype) %>%
+  group_modify(get_shared)
+
+
+clon_meta <- comb_meta %>% filter(!is.na(Clonotype)) %>% select(Cohort, Clonotype)
+clon_meta <- clon_meta[!duplicated(clon_meta$Clonotype),]
+
+comb_sharing <- left_join(comb_sharing, clon_meta)
+
+
+comb_meta_sharing <- left_join(comb_meta %>% filter(!is.na(Clonotype)), comb_sharing)
+
+comb_meta_sharing_p <- comb_meta_sharing %>%
+  group_by(ident_L3) %>%
+  group_modify(run_fisher)
+
+
+comb_meta_sharing_p <- comb_meta_sharing_p %>% ungroup() %>% mutate(padj = p.adjust(p_val, method = "fdr"))
+
+sig_clusts <- comb_meta_sharing_p %>%
+  mutate(p_sig = case_when(padj <= 0.05 ~ 1,
+                           T ~ 0)) %>%
+  group_by(ident_L3) %>%
+  dplyr::summarize(comps_sig = sum(p_sig)) %>%
+  filter(comps_sig==2) %>%
+  pull(ident_L3)
+
+
+print("Significant:")
+print(sig_clusts)
+```
+
+
+
+
+#Fig. 5
+
+T CD4 focused Figure
+
+```{r}
+cd4_subset <- imm_sub_2$`T CD4+`
+
+cd4_subset@meta.data$ident_L3 <- substr(cd4_subset@meta.data$ident_L3, nchar("T CD4+ ") + 1, max(nchar(cd4_subset@meta.data$ident_L3)))
+
+cd4_subset@meta.data$ident_L3 <- gsub(pattern = "Reg", replacement = "TReg", x = cd4_subset@meta.data$ident_L3)
+
+cd4_subset <- SetIdent(cd4_subset, value = "ident_L3")
+```
+
+
+UMAP plot
+```{r}
+cd4_gene_mod <- c("ANXA1", "IL4I1", "HLA-DR", "TNFR", "NR4A")
+
+pdf(file=paste(fig_dir, "Fig5_umap_cd4.pdf", sep="/"), width = 5, height=5)
+tmp <- format_plot_umap_with_num(cd4_subset, "ident_L3", cd4_gene_mod, lp="bottom", nc=2)
+dev.off()
+```
+
+
+
+Sig Genes Visualization
+```{r}
+cd4_subset <- format_seur_for_plot(cd4_subset, "ident_L3", "ident_L3_plot", cd4_gene_mod)
+cd4_subset <- SetIdent(cd4_subset, value = "ident_L3_plot")
+
+
+features.plot=c( "ANXA1", "IL4I1", "CXCR5", "SELL", "CCR7", "FOXP3", "HLA-DRB1", "IFNG", "TNFRSF4", "NR4A1", "CD200","IL7R", "CD40LG")
+
+
+pdf(file=paste(fig_dir, "Fig5_DotPlot.pdf", sep="/"), width = 4, height=4)
+DotPlot(cd4_subset, "RNA", features.plot) +
+  coord_flip() +
+  theme(axis.text.x = element_markdown(angle = 90, vjust = 0.5, hjust=1),
+        axis.text.y = element_text(face="italic"),
+        axis.title=element_blank()) +
+  guides(colour=guide_colorbar(title="\n\n\n\nAve.\nExp.", order = 1),
+         size=guide_legend(title="Pct.\nExp.", order = 2))
+dev.off()
+```
+
+
+
+Proportion plots
+```{r}
+
+pdf(file=paste(fig_dir, "Fig5_PropPlot.pdf", sep="/"), width = 3.5, height=3)
+print(generate_patient_proportion_plot(cd4_subset, ident_var = "ident_L3_plot", group_var = "Cohort", group_selection = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+        ylab("Enrichment") +
+        xlab("") +
+        labs(fill="") +
+        theme(legend.position="bottom",
+              axis.text.x = element_markdown(margin=margin(b=-0.6, unit='cm')))+
+        guides(fill=F) )
+dev.off()
+
+```
+
+
+Boxplot
+T Cells Boxplots
+```{r}
+tmp <- make_boxplot_idents_separate(cd4_subset, ident_var = "ident_L3_plot", selected_name = "CD4 T cells", selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  theme(axis.title.x=element_blank(),
+        legend.position = "bottom",
+        axis.text.x = element_markdown(margin=margin(b=-0.4, unit='cm')),
+        legend.title = element_blank(),
+        plot.title = element_markdown())
+
+
+source_data <- tmp$data
+colnames(source_data)[3] <- "Identity"
+source_data <- source_data[,c("Patient", "Cohort", "Identity", "prop")]
+write.csv(source_data, file=paste(sourced_dir, "SourceData_Fig5D.csv", sep="/"), row.names = F)
+
+
+
+
+pdf(file=paste(fig_dir, "Fig5_Boxplot_CD4_Subsets.pdf", sep="/"), width = 5, height=3)
+  print(tmp)
+dev.off()
+
+
+```
+
+
+
+
+#Fig. 6
+
+DEG Calculation. You can load pre-computed count or DEG data below instead of recalculating it, if you should so desire.
+```{r}
+pb_data <- generate_pseudobulk_counts(seur_har$imm, "ident_L3", "Patient")
+pb_meta <- pb_data$meta
+pb_counts <- pb_data$counts
+
+#keep only samples with at least 5 cells reported
+pb_meta$nCells <- as.integer(pb_meta$nCells)
+pb_meta <- pb_meta[pb_meta$nCells > 5,]
+pb_counts <- pb_counts[rownames(pb_counts) %in% pb_meta$id,]
+pb_counts <- t(pb_counts)
+
+#Add cohort data:
+patient_meta <- seur_har$imm@meta.data[,c("Patient", "Cohort")]
+patient_meta <- patient_meta[!duplicated(patient_meta),]
+pb_meta <- merge(pb_meta, patient_meta, by.x="sample", by.y="Patient", all.x=T, all.y=F)
+
+
+#alternatively, save/load pre-computed pb counts:
+save(pb_counts, pb_meta, file = paste(marks_dir, "pb_counts.rbin", sep="/"))
+#load(file = paste(marks_dir, "pb_counts.rbin", sep="/"), verbose = T)
+
+
+run_de_per_cluster <- function(counts, meta, group_var="Cohort"){
+  #meta must have column names "cluster" to represent cluster name
+  #and "id" must represent sample ID
+  #and "Cohort" to represent the grouping
+  #TODO: Cohort comparisons were hard-coded for speed of writing the function. It would be good to modify it so that they are extracted from cohort variable in the future...
+  require(tidyverse)
+  require(edgeR)
+  my_counts <- 0
+  counts <- as.data.frame(counts)
+  all_comps <- list()
+  clusts <- unique(meta[,"cluster"])
+  for(c in clusts){
+    print(paste("Working on cluster", c))
+    my_counts <- my_counts + 1
+    print(paste("Which is cluster", my_counts, "out of", length(clusts)))
+    s_names <- meta %>% filter(cluster==c) %>% select(id) %>% unlist()
+    names(s_names) <- c()
+    c_counts <- counts %>% select(all_of(s_names))
+    c_meta <- meta %>% filter(id %in% s_names)
+    coh_present <- unique(c_meta[,"Cohort"])
+    if(length(coh_present) < 2){
+      print("Skipping this cluster, as only one cohort has data.")
+      next()
+    }
+    if(!("Active_MC" %in% coh_present)){
+      print("Skipping this cluster, as MC samples don't have data.")
+      next()
+    }
+    if(sum(table(c_meta[,"Cohort"]) > 1) == 0){
+      print("Skipping this cluster, as there aren't enough samples to calculate dispersion.")
+      next()
+    }
+    y <- DGEList(counts = c_counts, samples = c_meta, group=c_meta[,group_var])
+    y <- calcNormFactors(y)
+    design <- model.matrix(~ 0 + Cohort, data=y$samples)
+    rownames(design) <- colnames(y)
+    y <- estimateDisp(y, design, robust=TRUE)
+    fit <- glmQLFit(y, design, robust=TRUE)
+    topgenes <- list()
+    if("Chron_Diarr" %in% coh_present){
+      cd_qlt <- glmQLFTest(fit, contrast=makeContrasts(CohortActive_MC - CohortChron_Diarr, levels=design))
+      topgenes_cd <- topTags(cd_qlt, n=nrow(c_counts))
+      topgenes[["CD"]] <- topgenes_cd$table
+    }
+    else{print("CD data not present, skipping this comparison...")}
+    if("Unaffected" %in% coh_present){
+      h_qlt <- glmQLFTest(fit, contrast=makeContrasts(CohortActive_MC - CohortUnaffected, levels=design))
+      topgenes_h <- topTags(h_qlt, n=nrow(c_counts))
+      topgenes[["H"]] <- topgenes_h$table
+    }
+    else{print("Unaffected data not present, skipping this comparison...")}
+    all_comps[[c]] <- topgenes
+  }
+  return(all_comps)
+}
+
+
+des_to_table <- function(de_list){
+  #input is a list of lists of DE comparisons. Top level indicates cluster, second level is comparison (H or CD)
+  de_table <- data.frame()
+  for(c in names(de_list)){
+    print(paste("Working on cluster", c))
+    for(comp in names(de_list[[c]])){
+      tmp_table <- de_list[[c]][[comp]]
+      tmp_table$comp <- comp
+      tmp_table$gene <- rownames(tmp_table)
+      tmp_table$cluster <- c
+      tmp_table <- tmp_table %>% select(c("cluster", "comp", "gene", "logFC", "FDR"))
+      de_table <- rbind(de_table, tmp_table)
+    }
+  }
+  return(de_table)
+}
+
+
+
+cohort_de <- run_de_per_cluster(pb_counts, pb_meta)
+de_table <- des_to_table(cohort_de)
+
+de_table_sig <- subset(de_table, FDR < 0.1)
+
+write.csv(de_table, file = paste(marks_dir, "Marks_per_cluster_by_cohort.csv", sep="/"), row.names = F)
+write.csv(de_table_sig, file = paste(marks_dir, "Supp_Table_2_Marks_per_cluster_by_cohort_sig.csv", sep="/"), row.names = F)
+
+#to load pre-computed DEGs instead:
+#de_table <- read.csv(file = paste(marks_dir, "Marks_per_cluster_by_cohort.csv", sep="/"), stringsAsFactors = F)
+
+
+#formatting -- gene name in italics, + replaced with Hi, etc.
+de_table <- format_for_heatmap(de_table, "cluster", "cluster_format", gene_mod)
+de_table_format <- de_table
+de_table_format$cluster <- de_table_format$cluster_format
+
+cluster_labs <- format_for_heatmap(cluster_labs, "cluster", "cluster_format", gene_mod)
+cluster_labs <- format_for_heatmap(cluster_labs, "group", "group_format", gene_mod)
+cluster_labs_format <- cluster_labs
+cluster_labs_format$cluster <- cluster_labs_format$cluster_format
+cluster_labs_format$group <- cluster_labs_format$group_format
+
+cluster_labs_format$group <- gsub(x = cluster_labs_format$group, pattern = "Macrophage", replacement = "M\u03d5")
+cluster_labs_format$group <- gsub(x = cluster_labs_format$group, pattern = "Myeloid Other", replacement = "Myeloid")
+```
+
+
+
+
+Make heatmap:
+```{r}
+gwas_genes <- c("HLA-B", "HLA-DRB1", "HLA-DQB1", "HLA-DQA1", "HLA-C", "CLEC16A", "RMI2")
+proinf_sub <- c("IFNG", "TNF", "LTA", "TNFSF4", "CXCL9", "CXCL10","CXCL13", "CXCR3", "CCL3", "IL26", "IL17A")
+antinf_sub <- c("IL1RN", "IL4", "IL6", "IL10")
+activation_mark <- c("TOX2", "CTLA4")
+
+gene_grouping <- data.frame(gene=c(activation_mark, antinf_sub, proinf_sub, gwas_genes),
+                            group=c(rep("Oth.", length(activation_mark)),
+                                    rep("Anti-\nInflamm.", length(antinf_sub)),
+                                    rep("Pro-\nInflamm.", length(proinf_sub)),
+                                    rep("GWAS", length(gwas_genes))))
+
+
+tmp <- subset(de_table_format, gene %in% gene_grouping$gene)
+
+
+tmp_plot <- make_heatmap_mc_rowGroups_left(tmp,
+                                           x_sep = 0.01,
+                                           y_sep=0.03,
+                                           linesz = 0.5,
+                                           clust_group = cluster_labs_format,
+                                           gene_group=gene_grouping, presorted=T)
+
+pdf(file=paste(fig_dir, "Fig6B_DEGs_Grouped.pdf", sep="/"), width = 13, height=6)
+tmp_plot + theme(legend.position="bottom", axis.title.x=element_blank()) + guides(fill=guide_legend(nrow=1,byrow=TRUE))
+dev.off()
+
+jpeg(file=paste(fig_dir, "Fig6B_DEGs_Grouped.jpg", sep="/"), width = 13, height=6, units="in", res=300)
+tmp_plot + theme(legend.position="bottom", axis.title.x=element_blank()) + guides(fill=guide_legend(nrow=1,byrow=TRUE))
+dev.off()
+
+```
+
+
+
+
+#Fig. S1
+
+UMAP colored by tech:
+```{r}
+jpeg(file=paste(fig_dir, "SuppFig1_TechComp_Imm.jpg", sep="/"), width = 8, height=4, units="in", res=300)
+print(tech_comp_plot(seur_har$imm, title="Immune Cells"))
+dev.off()
+
+jpeg(file=paste(fig_dir, "SuppFig1_TechComp_TCD8.jpg", sep="/"), width = 8, height=4, units="in", res=300)
+print(tech_comp_plot(imm_sub_2$`T CD8+`, title="CD8 T Cells"))
+dev.off()
+
+jpeg(file=paste(fig_dir, "SuppFig1_TechComp_TCD4.jpg", sep="/"), width = 8, height=4, units="in", res=300)
+print(tech_comp_plot(imm_sub_2$`T CD4+`, title="CD4 T Cells"))
+dev.off()
+
+jpeg(file=paste(fig_dir, "SuppFig1_TechComp_Mye.jpg", sep="/"), width = 8, height=4, units="in", res=300)
+print(tech_comp_plot(imm_sub$Mac_Mon_DC, title="Myeloid Cells"))
+dev.off()
+
+jpeg(file=paste(fig_dir, "SuppFig1_TechComp_Plas.jpg", sep="/"), width = 8, height=4, units="in", res=300)
+print(tech_comp_plot(imm_sub$Plasma, title="Plasma Cells"))
+dev.off()
+
+
+```
+
+
+
+
+
+#Fig. S2
+How many patients are contained within each cluster? Representing how robust the cell clusters are
+```{r}
+gene_mod <- c("Gzm", "GZMK", "NCR3", "KLRC1", "NR4A", "CD137", "GNLY", "ANXA1", "IL4I1", "HLA-DR", "TNFR", "CD16", "MMP12", "KLF6", "NCAM1", "LTB", "CSF2", "CCL4", "S100B")
+
+seur_har$imm <- format_seur_for_plot(seur_har$imm, ident_base = "ident_L3", ident_format = "ident_L3_plot", g_names = gene_mod)
+
+clust_patient_counts <- data.frame(rowSums(with(seur_har$imm@meta.data, table(ident_L3_plot, Patient)) > 0))
+colnames(clust_patient_counts)[1] <- "num_patients"
+clust_patient_counts$cluster <- rownames(clust_patient_counts)
+mean_counts <- mean(clust_patient_counts$num_patients)
+min(clust_patient_counts$num_patients)
+
+
+
+write.csv(clust_patient_counts, file=paste(sourced_dir, "SourceData_FigS2A.csv", sep="/"), row.names = F)
+
+
+
+
+pdf(file=paste(fig_dir, "SuppFig2_clust_pat_counts.pdf", sep="/"), width = 8, height=6)
+ggplot(clust_patient_counts, aes(x=cluster, y=num_patients)) +
+  geom_bar(stat="identity") +
+  geom_hline(yintercept = mean_counts, size=1, lty="twodash") +
+  annotate(geom="text", x=15, y=47, label=paste("Average: ", format(mean_counts, digits = 4)), size=10) +
+  theme_bw() +
+  theme(axis.text.x = element_markdown(angle = 45, vjust = 1, hjust=1),
+        axis.title.x = element_blank())
+dev.off()
+```
+
+
+```{r}
+clust_patient_counts <- data.frame(with(seur_har$imm@meta.data, table(ident_L3_plot, Patient)))
+
+
+write.csv(clust_patient_counts, file=paste(sourced_dir, "SourceData_FigS2B.csv", sep="/"), row.names = F)
+
+
+
+pdf(file=paste(fig_dir, "SuppFig2_clust_pat_props.pdf", sep="/"), width = 8, height=6)
+ggplot(clust_patient_counts, aes(x=ident_L3_plot, y=Freq)) +
+  geom_bar(stat = "identity", aes(fill=Patient), position = position_fill())+
+  theme_bw() +
+  theme(axis.text.x = element_markdown(angle = 45, vjust = 1, hjust=1)) +
+  labs(x="Cluster", y="Proportion") +
+  guides(fill=F)
+dev.off()
+
+```
+
+
+
+
+#Fig. S3
+
+UMAP
+```{r}
+myeloid_subset <- imm_sub$Mac_Mon_DC
+
+myeloid_subset <- format_for_umap(myeloid_subset, "ident_L2", "ident_L2_format", gene_mod)
+
+pdf(file=paste(fig_dir, "SuppFig3_umap.pdf", sep="/"), width = 4.5, height=4.5)
+print(DimPlot_format(myeloid_subset, group.by="ident_L2_format"))
+dev.off()
+```
+
+
+Sig Genes visualization
+```{r}
+myeloid_subset <- format_seur_for_plot(myeloid_subset, "ident_L2", "ident_L2_format", gene_mod)
+
+#remake factor so that the idents are in alphabetical order
+myeloid_subset@meta.data$ident_L2_format <- as.factor(as.character(myeloid_subset@meta.data$ident_L2_format))
+myeloid_subset <- SetIdent(myeloid_subset, val="ident_L2_format")
+features.plot <- c("XCR1", "CLEC9A", "CD1C", "CLEC10A", "IDO1", "SNX3", "LAMP3","S100B", "CCR7", "CD83", "FSCN1", "MARCKSL1", "C1QA", "C1QB", "FCN1", "CD52", "FCGR3B", "CXCR2", "LILRA4", "CLEC4C")
+
+pdf(file=paste(fig_dir, "SuppFig3_stacked_violin.pdf", sep="/"), width = 3.25, height=4.5)
+StackedVlnPlot(myeloid_subset, features.plot)
+dev.off()
+```
+
+
+Proportion plots
+```{r}
+pdf(file=paste(fig_dir, "SuppFig3_PropPlot.pdf", sep="/"), width = 3, height=2.5)
+print(generate_patient_proportion_plot(myeloid_subset,
+                                       ident_var = "ident_L2_format",
+                                       group_var = "Cohort",
+                                       group_selection = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+        ylab("Enrichment") +
+        xlab("") +
+        theme(legend.position="none",
+              axis.text.x = element_markdown(margin=margin(b=-0.75, unit='cm'))))
+dev.off()
+
+```
+
+
+Boxplots
+```{r}
+tmp <- make_boxplot_idents_separate(myeloid_subset,
+                             ident_var = "ident_L2_format",
+                             selected_name = "Myeloid Cells",
+                             selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  theme(axis.title.x=element_blank(),
+        legend.position = "bottom",
+        axis.text.x = element_markdown(margin=margin(b=-0.4, unit='cm')))
+
+
+source_data <- tmp$data
+colnames(source_data)[3] <- "Identity"
+source_data <- source_data[,c("Patient", "Cohort", "Identity", "prop")]
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS3D.csv", sep="/"), row.names = F)
+
+
+
+
+
+pdf(file=paste(fig_dir, "SuppFig3_BoxPlot_Myeloid.pdf", sep="/"), width = 5, height=3)
+print(tmp)
+dev.off()
+
+
+```
+
+
+
+
+#Fig. S4
+
+
+EPI
+```{r}
+seur_har$epi <- SetIdent(seur_har$epi, value = "ident_L1")
+seur_har$epi <- format_for_umap(seur_har$epi, "ident_L1", "ident_L1_plot", c("DUOX2", "BEST4", "OLFM4", "MKI67", "PCNA"))
+
+pdf(file=paste(fig_dir, "SuppFig2_UMAP_epi.pdf", sep="/"), width = 6, height=6)
+tmp <- format_plot_umap_with_num(seur_har$epi, "ident_L1", c("DUOX2", "BEST4", "OLFM4", "MKI67", "PCNA"), lp="bottom", nc=2)
+dev.off()
+
+
+seur_har$epi <- format_seur_for_plot(seur_har$epi, "ident_L1", "ident_L1_plot", c("DUOX2", "BEST4", "OLFM4", "MKI67", "PCNA"))
+seur_har$epi <- SetIdent(seur_har$epi, value = "ident_L1_plot")
+
+
+
+
+features.plot <- c("LRMP", "TRPM5","PYY", "CA1", "CA2","OLFM4","MUC2", "WFDC2", "MKI67", "PCNA", "BEST4","DUOX2",  "KRT20", "PLAC8" )
+
+pdf(file=paste(fig_dir, "SuppFig4_stacked_violin_epi.pdf", sep="/"), width = 3.25, height=5)
+StackedVlnPlot(seur_har$epi, features.plot)
+dev.off()
+```
+
+
+STR
+```{r}
+seur_har$str <- SetIdent(seur_har$str, value = "ident_L1")
+seur_har$str <- format_for_umap(seur_har$str, "ident_L1", "ident_L1_plot", c("PDGFRA"))
+
+
+pdf(file=paste(fig_dir, "SuppFig4_UMAP_str.pdf", sep="/"), width = 4.5, height=4.5)
+DimPlot_format(seur_har$str, group.by="ident_L1_plot")
+dev.off()
+
+
+
+
+seur_har$str <- format_seur_for_plot(seur_har$str, "ident_L1", "ident_L1_plot", c("PDGFRA"))
+seur_har$str <- SetIdent(seur_har$str, value = "ident_L1_plot")
+
+features.plot <- c("THY1", "WNT2B","COL1A2", "VWF", "PLVAP", "VSTM2A", "NSG1", "PDGFRA", "ACTA2", "RGS5", "MCAM","PLP1", "SOX10", "S100B", "MADCAM1")
+
+pdf(file=paste(fig_dir, "SuppFig4_stacked_violin_str.pdf", sep="/"), width = 3.25, height=5)
+StackedVlnPlot(seur_har$str, features.plot)
+dev.off()
+```
+
+#Fig. S5
+
+Print UMAP
+```{r}
+b_subset <- imm_sub$`B Cell`
+
+pdf(file=paste(fig_dir, "SuppFig5_umap_b.pdf", sep="/"), width = 4.5, height=4.5)
+print(DimPlot(b_subset,
+              reduction = "umap",
+              group.by = "ident_L2",
+              label=T,
+              repel = T) +
+        guides(colour=F))
+dev.off()
+```
+
+
+Sig Genes Visualization
+```{r}
+b_subset@meta.data$ident_L2 <- factor(b_subset@meta.data$ident_L2, levels=sort(unique(b_subset@meta.data$ident_L2)))
+
+b_subset <- SetIdent(b_subset, value="ident_L2")
+
+features.plot=c("CD79A","CD83", "RGS13", "OAS1", "FCRL4", "TCL1A", "IGHD", "IGHA1")
+
+
+pdf(file=paste(fig_dir, "SuppFig5_stacked_violin.pdf", sep="/"), width = 3, height=4)
+StackedVlnPlot(b_subset, features.plot, y_3_pt = T)
+dev.off()
+
+```
+
+
+
+Proportion plots
+```{r}
+pdf(file=paste(fig_dir, "SuppFig5_PropPlot.pdf", sep="/"), width = 3.5, height=3)
+print(generate_patient_proportion_plot(b_subset,
+                                       ident_var = "ident_L2",
+                                       group_var = "Cohort",
+                                       group_selection = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+        ylab("Enrichment") +
+        xlab("") +
+        labs(fill="") +
+        theme(legend.position="bottom",
+              axis.text.x = element_text(margin=margin(b=-0.8, unit='cm'))) +
+        scale_fill_discrete(labels=c("Active_MC" = "Active MC", "Chron_Diarr"="Chronic\nDiarrhea", "Unaffected"="Unaffected")))
+dev.off()
+
+```
+
+
+
+
+Boxplots
+```{r}
+tmp <- make_boxplot(seur_har$imm,
+             ident_var = "ident_PLOT",
+             c("B GC", "B Activated", "B Naive"),
+             selected_name = "B Cells",
+             selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  guides(fill=F)
+
+source_data <- tmp$data
+source_data$Cells <- "B"
+
+pdf(file=paste(fig_dir, "SuppFig5_BoxPlot_B.pdf", sep="/"), width = 2.5, height=2)
+  print(tmp)
+dev.off()
+
+
+
+tmp <- make_boxplot(seur_har$imm,
+             ident_var = "ident_PLOT",
+             c("Plasma"),
+             selected_name = "Plasma Cells",
+             selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  guides(fill=F)
+
+pdf(file=paste(fig_dir, "SuppFig5_BoxPlot_Plasma.pdf", sep="/"), width = 2.5, height=2)
+  print(tmp)
+dev.off()
+
+tmp2 <- tmp$data
+tmp2$Cells <- "Plasma"
+source_data <- rbind(source_data, tmp2)
+source_data <- source_data[,c(1,2,6,5)]
+colnames(source_data)[4] <- "Proportion"
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS5E.csv", sep="/"), row.names = F)
+
+
+
+tmp <- make_boxplot_idents_separate(b_subset,
+                             ident_var = "ident_L2",
+                             selected_name = "B Cells",
+                             selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  theme(axis.title.x=element_blank(),
+        legend.position = "bottom",
+        axis.text.x = element_text(margin=margin(b=-0.4, unit='cm')))
+source_data <- tmp$data
+source_data$CellGroup <- "B"
+
+pdf(file=paste(fig_dir, "SuppFig5_Boxplot_B_subsets.pdf", sep="/"), width = 4, height=2.5)
+print(tmp)
+dev.off()
+
+
+
+tmp <- make_boxplot_idents_separate(imm_sub$Plasma,
+                             ident_var = "ident_L2",
+                             selected_name = "Plasma Cells",
+                             selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  theme(axis.title.x=element_blank(),
+        legend.position = "bottom",
+        axis.text.x = element_text(margin=margin(b=-0.4, unit='cm')),
+        legend.title = element_blank())
+
+
+pdf(file=paste(fig_dir, "SuppFig5_Boxplot_Plasma_sub.pdf", sep="/"), width = 3.5, height=2.5)
+print(tmp)
+dev.off()
+
+
+tmp2 <- tmp$data
+tmp2$CellGroup <- "Plasma"
+source_data <- rbind(source_data, tmp2)
+source_data <- source_data[,c(1,2,3,7,6)]
+colnames(source_data)[5] <- "Proportion"
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS5F.csv", sep="/"), row.names = F)
+
+  
+  
+```
+
+
+Plasma cell homing markers
+```{r}
+tmp <- subset(imm_sub$`Plasma`, Cohort %in% c("Active_MC", "Chron_Diarr", "Unaffected"))
+
+pdf(file=paste(fig_dir, "SuppFig5_DotPlot_Plasma.pdf", sep="/"), width = 4, height=3)
+DotPlot(tmp,"RNA", c("ITGA4", "ITGB7", "ITGAE"), group.by="Cohort") +
+  ylab("Cohort") +
+  theme(legend.position="right",
+        axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1, face="italic"),
+        axis.title.x=element_blank(),
+        legend.box.margin = margin(t=1.5, unit="cm")) +
+  scale_y_discrete(breaks = c("Active_MC", "Chron_Diarr", "Unaffected"), labels=c("Active MC", "Chronic\nDiarrhea", "Unaffected"))
+dev.off()
+
+rm(tmp)
+```
+
+
+```{r}
+pat_meta <- seur_har$imm@meta.data[,c("Patient", "Cohort", "Symptoms", "Pathology", "MC_Type")]
+pat_meta <- pat_meta[!duplicated(pat_meta),]
+
+pat_counts <- with(seur_har$imm@meta.data, table(Patient, ident_L2))
+
+plas_counts <- as.data.frame(pat_counts[,colnames(pat_counts) %in% c("IGA_IGK", "IGA_IGL", "IGG_IGK", "IGG_IGL")])
+plas_counts <- dcast(plas_counts, Patient ~ ident_L2)
+plas_counts <- merge(plas_counts, pat_meta, by="Patient", all=T)
+plas_counts <- plas_counts[plas_counts$Cohort %in% c("Active_MC", "Unaffected", "Chron_Diarr"),]
+
+plas_counts$IGA <- plas_counts$`IGA_IGK` + plas_counts$`IGA_IGL`
+plas_counts$IGG <- plas_counts$`IGG_IGK` + plas_counts$`IGG_IGL`
+
+plas_counts$IGG_IGA <- plas_counts$IGG/plas_counts$IGA
+
+
+
+pdf(file=paste(fig_dir, "SuppFig5_BoxPlot_PlasmaProps.pdf", sep="/"), width = 3, height=3)
+ggplot(plas_counts, aes(x=Cohort, y=IGG_IGA)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1)) +
+  ylab("IGG/IGA Proportion") +
+  scale_x_discrete(breaks = c("Active_MC", "Chron_Diarr", "Unaffected"), labels=c("Active MC", "Chronic\nDiarrhea", "Unaffected"))
+dev.off()
+
+
+
+source_data <- plas_counts[, c("Patient", "Cohort", "IGG_IGA")]
+colnames(source_data)[3] <- "IGG/IGA_Prop"
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS5G.csv", sep="/"), row.names = F)
+
+```
+
+
+
+#Fig. S6
+Comparison between 10X and inDrops
+
+
+```{r}
+tenX <- subset(seur_har$imm, Tech=="10X")
+inDrops <- subset(seur_har$imm, Tech=="inDrops")
+
+
+seur_har$imm <- format_seur_for_plot(seur_har$imm, "ident_PLOT", "ident_PLOT_format", c())
+seur_har$imm <- format_seur_for_plot(seur_har$imm, "ident_L2", "ident_L2_format", c())
+tenX <- format_seur_for_plot(tenX, "ident_PLOT", "ident_PLOT_format", c())
+inDrops <- format_seur_for_plot(inDrops, "ident_PLOT", "ident_PLOT_format", c())
+```
+
+
+Proportion plots
+```{r}
+pdf(file=paste(fig_dir, "SuppFig6_PropPlot_indrops_v_10x.pdf", sep="/"), width = 4, height=2)
+print(generate_proportion_plot(seur_har$imm, ident_var = "ident_L2_format", group_var = "Tech", order.by = "10X") +
+        ylab("Enrichment") +
+        xlab("") +
+        theme(legend.position="bottom", axis.text.x = element_markdown(margin=margin(b=-0.75, unit='cm'), size=8)) +
+  scale_fill_discrete(labels=c("Active_MC" = "Active MC", "Chron_Diarr"="Chronic Diarrhea", "Unaffected"="Unaffected")))
+dev.off()
+
+pdf(file=paste(fig_dir, "SuppFig6_PropPlot_10X.pdf", sep="/"), width = 4, height=3)
+print(generate_patient_proportion_plot(tenX, ident_var = "ident_PLOT_format", group_var = "Cohort", group_selection = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+        ggtitle("10X") +
+        ylab("Enrichment") +
+        xlab("") +
+        theme(legend.position="bottom", axis.text.x = element_markdown(margin=margin(b=-0.8, unit='cm'))) +
+        scale_fill_discrete(labels=c("Active_MC" = "Active MC", "Chron_Diarr"="Chronic\nDiarrhea", "Unaffected"="Unaffected")))
+dev.off()
+
+pdf(file=paste(fig_dir, "SuppFig6_PropPlot_indrops.pdf", sep="/"), width = 4, height=3)
+print(generate_patient_proportion_plot(inDrops, ident_var = "ident_PLOT_format", group_var = "Cohort", group_selection = c("Active_MC", "Chron_Diarr", "Unaffected"))+
+        ggtitle("inDrops") +
+        ylab("Enrichment") +
+        xlab("") +
+        theme(legend.position="bottom", axis.text.x = element_markdown(margin=margin(b=-0.8, unit='cm'))) +
+        scale_fill_discrete(labels=c("Active_MC" = "Active MC", "Chron_Diarr"="Chronic\nDiarrhea", "Unaffected"="Unaffected")))
+dev.off()
+```
+
+
+Box plots
+```{r}
+tmp <- make_boxplot(tenX, ident_var = "ident_PLOT", c("T CD8+"), selected_name = "10X CD8 T", selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  guides(fill=F)+
+  theme(plot.title = element_markdown()) 
+
+source_data <- tmp$data
+source_data$Cells <- "10X_CD8"
+
+
+pdf(file=paste(fig_dir, "SuppFig6_BoxPlot_CD8_10X.pdf", sep="/"), width = 2, height=2)
+print(tmp)
+dev.off()
+
+
+
+tmp <- make_boxplot(inDrops, ident_var = "ident_PLOT", c("T CD8+"), selected_name = "inDrops CD8 T", selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  guides(fill=F)+
+  theme(plot.title = element_markdown())
+
+
+tmp2 <- tmp$data
+tmp2$Cells <- "inDrops_CD8"
+source_data <- rbind(source_data, tmp2)
+source_data <- source_data[,c(1,2,6,5)]
+colnames(source_data)[4] <- "Proportion"
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS6B.csv", sep="/"), row.names = F)
+
+
+pdf(file=paste(fig_dir, "SuppFig6_BoxPlot_CD8_inDrops.pdf", sep="/"), width = 2, height=2)
+print(tmp)
+dev.off()
+```
+
+
+
+CD8 comparison
+```{r}
+cd8_indrops <- subset(cd8_subset, Tech=="inDrops")
+cd8_10X <- subset(cd8_subset, Tech=="10X")
+
+
+cd8_indrops <- format_seur_for_plot(cd8_indrops, "ident_L3", "ident_L3_format", gene_mod)
+cd8_10X <- format_seur_for_plot(cd8_10X, "ident_L3", "ident_L3_format", gene_mod)
+
+
+tmp <- make_boxplot_idents_separate(cd8_indrops, ident_var = "ident_L3_format", selected_name = "inDrops CD8 T cells", selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  ylab("Proportion") +
+  xlab("") +
+  theme(legend.position="bottom",
+        legend.title = element_blank(),
+        axis.text.x = element_markdown(margin=margin(b=-0.8, unit='cm')),
+        plot.title = element_markdown()) + guides(fill=F) + 
+  ggtitle(paste0("inDrops CD8 T cells (n=", ncol(cd8_indrops), ")"))
+
+
+source_data <- tmp$data
+source_data$CellGroup <- "inDrops"
+
+
+
+pdf(file=paste(fig_dir, "SuppFig6_BoxPlot_CD8_subsets_inDrops.pdf", sep="/"), width = 3.5, height=2)
+print(tmp)
+dev.off()
+
+
+tmp <- make_boxplot_idents_separate(cd8_10X, ident_var = "ident_L3_format", selected_name = "10X CD8 T cells", selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  ylab("Proportion") +
+  xlab("") +
+  theme(legend.position="bottom",
+        legend.title = element_blank(),
+        axis.text.x = element_markdown(margin=margin(b=-0.8, unit='cm')),
+        plot.title = element_markdown()) +
+  guides(fill=F) + 
+  ggtitle(paste0("10X CD8 T cells (n=", ncol(cd8_10X), ")"))
+
+pdf(file=paste(fig_dir, "SuppFig6_BoxPlot_CD8_subsets_10X.pdf", sep="/"), width = 3.5, height=2)
+print(tmp)
+dev.off()
+
+
+tmp2 <- tmp$data
+tmp2$CellGroup <- "10X"
+source_data <- rbind(source_data, tmp2)
+source_data <- source_data[,c(1,2,3,7,6)]
+colnames(source_data)[5] <- "Proportion"
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS6D.csv", sep="/"), row.names = F)
+
+
+
+```
+
+
+CD4 comparison
+```{r}
+cd4_indrops <- subset(cd4_subset, Tech=="inDrops")
+cd4_10X <- subset(cd4_subset, Tech=="10X")
+cd4_indrops <- format_seur_for_plot(cd4_indrops, "ident_L3", "ident_L3_format", gene_mod)
+cd4_10X <- format_seur_for_plot(cd4_10X, "ident_L3", "ident_L3_format", gene_mod)
+
+
+
+tmp <- make_boxplot_idents_separate(cd4_indrops, ident_var = "ident_L3_format", selected_name = "inDrops CD4 T cells", selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  ylab("Proportion") +
+  xlab("") +
+  theme(legend.position="bottom",
+        legend.title = element_blank(),
+        axis.text.x = element_markdown(margin=margin(b=-0.8, unit='cm')),
+        plot.title=element_markdown()) +
+  guides(fill=F) + 
+  ggtitle(paste0("inDrops CD4 T cells (n=", ncol(cd4_indrops), ")"))
+
+source_data <- tmp$data
+source_data$CellGroup <- "inDrops"
+
+
+pdf(file=paste(fig_dir, "SuppFig6_BoxPlot_CD4_subsets_inDrops.pdf", sep="/"), width = 3.5, height=2)
+print(tmp)
+dev.off()
+
+
+
+tmp <- make_boxplot_idents_separate(cd4_10X, ident_var = "ident_L3_format", selected_name = "10X CD4 T cells", selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  ylab("Proportion") +
+  xlab("") +
+  theme(legend.position="bottom",
+        legend.title = element_blank(),
+        axis.text.x = element_markdown(margin=margin(b=-0.8, unit='cm')),
+        plot.title=element_markdown()) +
+  guides(fill=F) + 
+  ggtitle(paste0("10X CD4 T cells (n=", ncol(cd4_10X), ")"))
+
+pdf(file=paste(fig_dir, "SuppFig6_BoxPlot_CD4_subsets_10X.pdf", sep="/"), width = 3.5, height=2)
+print(tmp)
+dev.off()
+
+
+tmp2 <- tmp$data
+tmp2$CellGroup <- "10X"
+source_data <- rbind(source_data, tmp2)
+source_data <- source_data[,c(1,2,3,7,6)]
+colnames(source_data)[5] <- "Proportion"
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS6E.csv", sep="/"), row.names = F)
+
+
+
+
+#free up memory
+rm(cd8_indrops, cd8_10X, tenX, inDrops, cd4_indrops, cd4_10X)
+```
+
+
+
+#Fig. S7
+IFNG Feature plots
+```{r}
+#don't include asymptomatic MC in these plots
+cohort_select <- subset(cd8_subset, Cohort %in% c("Active_MC", "Chron_Diarr", "Unaffected"))
+
+cohort_select@meta.data$Cohort[cohort_select@meta.data$Cohort=="Active_MC"] <- "Active MC"
+cohort_select@meta.data$Cohort[cohort_select@meta.data$Cohort=="Chron_Diarr"] <- "Chronic Diarrhea"
+
+
+jpeg(file=paste(fig_dir, "SuppFig7_IFNG_FeaturePlot.jpg", sep="/"), width = 7, height=10, units="in", res=300)
+FeaturePlot(cohort_select, c("IFNG", "GZMB"), split.by = "Cohort", ncol=3, sort.cell=T, by.col=F)
+dev.off()
+```
+
+
+
+#Fig. S8
+load in the IHC counts.
+```{r}
+h_counts$Cohort <- "Unaffected"
+cd_counts$Cohort <- "Chron_Diarr"
+mc_counts$Cohort <- "Active_MC"
+
+cellcounts <- rbind(h_counts, cd_counts, mc_counts)
+
+cellcounts <- cellcounts %>%
+  pivot_longer(cols=c("Surface_Epi.", "Crypt_Epi.", "Lamina Propria"),
+               names_to = "Localization",
+               values_to = "count")
+
+#order it so both epi localizations appear next to each other in the plots.
+cellcounts$Localization <- factor(cellcounts$Localization, levels = c("Crypt_Epi.", "Surface_Epi.", "Lamina Propria"))
+```
+
+
+```{r}
+pdf(file=paste(fig_dir, "SuppFig8_CD8_Boxplot.pdf", sep="/"), width = 7, height = 3)
+ggplot(subset(cellcounts, Stain=="CD8"), aes(x=Cohort, y=count)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15) +
+  facet_wrap(~Localization, scales = "fixed") +
+  ylab("Cell Count") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  ggtitle("CD8+ Cells") +
+  scale_x_discrete(labels=c("Active_MC" = "Active MC", "Chron_Diarr"="Chronic Diarrhea", "Unaffected"="Unaffected"))
+dev.off()
+
+
+
+source_data <- subset(cellcounts, Stain=="CD8")
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS8B.csv", sep="/"), row.names = F)
+```
+
+
+
+Poisson and quasi-poisson regression to test for significance. This will run the test for all the different stains used
+```{r}
+run_pois <- function(.df, .y){
+  #set reference cohort to MC
+  .df$Cohort <- as.factor(.df$Cohort)
+  .df <- within(.df, Cohort <- relevel(Cohort, ref = "Active_MC"))
+  pois <- glm(data = .df, count ~ Cohort, family="poisson")
+  pois_sum <- summary(pois)
+  cd_pv <- pois_sum$coefficients["CohortChron_Diarr",4]
+  he_pv <- pois_sum$coefficients["CohortUnaffected",4]
+  to_ret <- data.frame(control=c("CD", "Unaffected"), pval=c(cd_pv, he_pv))
+  return(to_ret)
+}
+
+run_qpois <- function(.df, .y){
+  #set reference cohort to MC
+  .df$Cohort <- as.factor(.df$Cohort)
+  .df <- within(.df, Cohort <- relevel(Cohort, ref = "Active_MC"))
+  pois <- glm(data = .df, count ~ Cohort, family="quasipoisson")
+  pois_sum <- summary(pois)
+  cd_pv <- pois_sum$coefficients["CohortChron_Diarr",4]
+  he_pv <- pois_sum$coefficients["CohortUnaffected",4]
+  to_ret <- data.frame(control=c("CD", "Unaffected"), pval=c(cd_pv, he_pv))
+  return(to_ret)
+}
+
+pois <- cellcounts %>% group_by(Stain, Localization) %>% group_modify(run_pois)
+
+qpois <- cellcounts %>% group_by(Stain, Localization) %>% group_modify(run_qpois)
+
+
+
+pois <- pois %>%
+  ungroup() %>%
+  mutate(padj = p.adjust(pval, method = "fdr")) %>%
+  mutate(sig=case_when(padj < 0.05 ~ "Y",
+                       T ~ "N"))
+
+qpois <- qpois %>%
+  ungroup() %>%
+  mutate(padj = p.adjust(pval, method = "fdr")) %>%
+  mutate(sig=case_when(padj < 0.05 ~ "Y",
+                       T ~ "N"))
+
+
+```
+
+
+
+
+#Fig. S9
+
+```{r}
+pdf(file=paste(fig_dir, "SuppFig9_GZMB_Boxplot.pdf", sep="/"), width = 7, height = 3)
+ggplot(subset(cellcounts, Stain=="GZMB"), aes(x=Cohort, y=count)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15) +
+  facet_wrap(~Localization, scales = "fixed") +
+  ylab("Cell Count") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  ggtitle("GZMB+ Cells") +
+  scale_x_discrete(labels=c("Active_MC" = "Active MC", "Chron_Diarr"="Chronic Diarrhea", "Unaffected"="Unaffected"))
+dev.off()
+
+
+
+source_data <- subset(cellcounts, Stain=="GZMB")
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS9B.csv", sep="/"), row.names = F)
+```
+
+
+#Fig. S10
+
+```{r}
+#normalize to cell count
+dapi <- rnascope_cd8_ilastik %>% filter(Channel=="DAPI") %>% select(c("Patient", "Count"))
+
+colnames(dapi)[2] <- "nCells"
+
+rnascope_cd8_ilastik <- left_join(rnascope_cd8_ilastik, dapi)
+
+rnascope_cd8_ilastik <- rnascope_cd8_ilastik %>% mutate(prop=Count/nCells)
+
+
+
+cd8_1_fin_plot <- rnascope_cd8_ilastik %>%
+  filter(probe != "DAPI") %>%
+  mutate(Cohort=case_when(Cohort=="MC" ~ "Active_MC",
+                          Cohort=="CD" ~ "Chron_Diarr",
+                          T ~ Cohort))
+
+#Gene names in italics
+cd8_1_fin_plot$probe[cd8_1_fin_plot$probe=="LNC02446"] <- "*LINC02446*"
+cd8_1_fin_plot$probe[cd8_1_fin_plot$probe=="HLA-DRB1"] <- "*HLA-DRB1*"
+cd8_1_fin_plot$probe <- factor(cd8_1_fin_plot$probe, levels = c("CD8", "*LINC02446*", "*HLA-DRB1*"))
+
+
+
+
+pdf(file=paste(fig_dir, "SuppFig10_RNAscope_CD8_Panel1.pdf", sep="/"), width = 1.7, height=5.5)
+ggplot(cd8_1_fin_plot, aes(x=Cohort, y=prop)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.1, size=0.75) +
+  facet_wrap(~probe, scales="free_y", strip.position = "bottom", ncol = 1) +
+  theme_bw() +
+  scale_x_discrete(position = "top", labels=c("Active_MC" = "Active MC", "Chron_Diarr"="Chronic Diarrhea", "Unaffected"="Unaffected")) +
+  theme(axis.title = element_blank(),
+        axis.text.x = element_text(angle=90, hjust=0),
+        strip.text = element_markdown())
+dev.off()
+
+
+
+source_data <- cd8_1_fin_plot[, c(1, 4, 5, 7)]
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS10.csv", sep="/"), row.names = F)
+
+```
+
+
+
+#Fig. S11
+
+```{r}
+dapi <- rnascope_cd8_2_ilastik %>% filter(Channel=="DAPI") %>% select(c("Patient", "Count"))
+colnames(dapi)[2] <- "nCells"
+rnascope_cd8_2_ilastik <- left_join(rnascope_cd8_2_ilastik, dapi)
+rnascope_cd8_2_ilastik <- rnascope_cd8_2_ilastik %>% mutate(prop=Count/nCells)
+
+
+
+#Consider a GzmHi cell as one with 5 or more speckles of GZMB RNA. Count them from cellprofiler results:
+tmp <- rnascope_counts_cd8_2 %>%
+  mutate(gzm_cell = case_when(magentaCount>4 ~ "Y",
+                              T ~ "N")) %>%
+  group_by(Sample) %>%
+  dplyr::summarise(gzm_pos = sum(gzm_cell=="Y"))
+
+cp_counts <- pivot_longer(tmp, cols = c("gzm_pos"), values_to = "Count")
+#add metadata from the ilastik object:
+rnascope_meta <- rnascope_cd8_2_ilastik[,c("Patient", "Cohort", "nCells")]
+rnascope_meta <- rnascope_meta[!duplicated(rnascope_meta),]
+cp_counts <- cp_counts %>% mutate(probe=case_when(name=="gzm_pos" ~ "GZMB",
+                                                  T ~ "UNK")) %>%
+  select(-c("name")) %>%
+  left_join(rnascope_meta, by=c("Sample"="Patient"))
+
+cp_counts$prop <- cp_counts$Count / cp_counts$nCells
+
+
+
+
+cd8_2_fin_plot <- rnascope_cd8_2_ilastik %>%
+  filter(probe != "DAPI") %>%
+  mutate(Cohort=case_when(Cohort=="MC" ~ "Active_MC",
+                          Cohort=="CD" ~ "Chron_Diarr",
+                          T ~ Cohort))
+
+#mRNA in italics
+cd8_2_fin_plot$probe[cd8_2_fin_plot$probe=="BATF"] <- "*BATF*"
+cd8_2_fin_plot$probe <- factor(cd8_2_fin_plot$probe, levels = c("CD8", "*BATF*"))
+
+
+cd8_2_fin_plot_2 <- cp_counts %>%
+  mutate(Cohort=case_when(Cohort=="MC" ~ "Active_MC",
+                          Cohort=="CD" ~ "Chron_Diarr",
+                          T ~ Cohort))
+
+cd8_2_fin_plot_2$probe[cd8_2_fin_plot_2$probe=="GZMB"] <- "*GZMB*"
+
+
+
+p1 <- ggplot(cd8_2_fin_plot, aes(x=Cohort, y=prop)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.1, size=0.75) +
+  facet_wrap(~probe, scales="free_y", strip.position = "bottom", ncol = 1) +
+  theme_bw() +
+  scale_x_discrete(position = "top", labels=c("Active_MC" = "Active MC", "Chron_Diarr"="Chronic Diarrhea", "Unaffected"="Unaffected")) +
+  theme(axis.title = element_blank(),
+        axis.text.x = element_text(angle=90, hjust=0),
+        strip.text = element_markdown())
+
+p2 <- ggplot(cd8_2_fin_plot_2, aes(x=Cohort, y=prop)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.1, size=0.75) +
+  facet_wrap(~probe, scales="free_y", strip.position = "bottom", ncol = 1) +
+  theme_bw() +
+  scale_x_discrete(position = "top") +
+  theme(axis.title = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        strip.text = element_markdown())
+
+
+
+pdf(file=paste(fig_dir, "SuppFig11_RNAscope_CD8_Panel2.pdf", sep="/"), width = 2, height=5.5)
+p1 / p2 + plot_layout(heights = c(2.2, 1))
+dev.off()
+
+
+
+source_data <- cd8_2_fin_plot[, c(1, 4, 5, 7)]
+source_data <- rbind(source_data, cd8_2_fin_plot_2[, c(1, 4, 3, 6)] %>% dplyr::rename(Patient=Sample))
+
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS11.csv", sep="/"), row.names = F)
+
+```
+
+
+
+#Fig. S12
+
+
+```{r}
+dapi <- rnascope_cd4_ilastik %>% filter(Channel=="DAPI") %>% select(c("Patient", "Count"))
+colnames(dapi)[2] <- "nCells"
+rnascope_cd4_ilastik <- left_join(rnascope_cd4_ilastik, dapi)
+rnascope_cd4_ilastik <- rnascope_cd4_ilastik %>% mutate(prop=Count/nCells)
+
+
+
+
+cd4_fin_plot <- rnascope_cd4_ilastik %>%
+  filter(probe != "DAPI") %>%
+  mutate(Cohort=case_when(Cohort=="MC" ~ "Active_MC",
+                          Cohort=="CD" ~ "Chron_Diarr",
+                          T ~ Cohort))
+
+cd4_fin_plot$probe[cd4_fin_plot$probe=="FOXP3"] <- "*FOXP3*"
+cd4_fin_plot$probe[cd4_fin_plot$probe=="HLA-DRB1"] <- "*HLA-DRB1*"
+
+
+cd4_fin_plot$probe <- factor(cd4_fin_plot$probe, levels = c("CD4", "*FOXP3*", "*HLA-DRB1*"))
+
+
+
+pdf(file=paste(fig_dir, "SuppFig12_RNAscope_CD4_Panel.pdf", sep="/"), width = 1.7, height=5.5)
+ggplot(cd4_fin_plot,
+       aes(x=Cohort, y=prop)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.1, size=0.75) +
+  facet_wrap(~probe, scales="free_y", strip.position = "bottom", ncol = 1) +
+  theme_bw() +
+  scale_x_discrete(position = "top", labels=c("Active_MC" = "Active MC", "Chron_Diarr"="Chronic Diarrhea", "Unaffected"="Unaffected")) +
+  theme(axis.title = element_blank(),
+        axis.text.x = element_text(angle=90, hjust=0),
+        strip.text = element_markdown())
+dev.off()
+
+
+source_data <- cd4_fin_plot[, c(1, 4, 5, 7)]
+
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS12.csv", sep="/"), row.names = F)
+
+```
+
+
+#RNAscope Poisson Tests
+```{r}
+run_pois <- function(.df, .y){
+  #set reference cohort to MC
+  .df$Cohort <- as.factor(.df$Cohort)
+  .df <- within(.df, Cohort <- relevel(Cohort, ref = "MC"))
+  pois <- glm(data = .df, Count ~ Cohort + offset(log(nCells)), family="poisson")
+  pois_sum <- summary(pois)
+  cd_pv <- pois_sum$coefficients["CohortCD",4]
+  he_pv <- pois_sum$coefficients["CohortUnaffected",4]
+  to_ret <- data.frame(control=c("CD", "Unaffected"), pval=c(cd_pv, he_pv))
+  return(to_ret)
+}
+
+run_qpois <- function(.df, .y){
+  #set reference cohort to MC
+  .df$Cohort <- as.factor(.df$Cohort)
+  .df <- within(.df, Cohort <- relevel(Cohort, ref = "MC"))
+  pois <- glm(data = .df, Count ~ Cohort + offset(log(nCells)), family="quasipoisson")
+  pois_sum <- summary(pois)
+  cd_pv <- pois_sum$coefficients["CohortCD",4]
+  he_pv <- pois_sum$coefficients["CohortUnaffected",4]
+  to_ret <- data.frame(control=c("CD", "Unaffected"), pval=c(cd_pv, he_pv))
+  return(to_ret)
+}
+
+cd8_2_pois <- rnascope_cd8_2_ilastik %>% filter(probe != "DAPI") %>% group_by(probe) %>% group_modify(run_pois)
+cd8_2_pois$Panel <- "CD8_2"
+cd8_pois <- rnascope_cd8_ilastik %>% filter(probe != "DAPI") %>% group_by(probe) %>% group_modify(run_pois)
+cd8_pois$Panel <- "CD8"
+cd4_pois <- rnascope_cd4_ilastik %>% filter(probe != "DAPI") %>% group_by(probe) %>% group_modify(run_pois)
+cd4_pois$Panel <- "CD4"
+
+cd8_2_qpois <- rnascope_cd8_2_ilastik %>% filter(probe != "DAPI") %>% group_by(probe) %>% group_modify(run_qpois)
+cd8_2_qpois$Panel <- "CD8_2"
+cd8_qpois <- rnascope_cd8_ilastik %>% filter(probe != "DAPI") %>% group_by(probe) %>% group_modify(run_qpois)
+cd8_qpois$Panel <- "CD8"
+cd4_qpois <- rnascope_cd4_ilastik %>% filter(probe != "DAPI") %>% group_by(probe) %>% group_modify(run_qpois)
+cd4_qpois$Panel <- "CD4"
+
+
+all_pval <- rbind(cd8_2_pois, cd8_pois, cd4_pois)
+write.csv(all_pval, file = paste(analysis_dir, "Histology", "RNAscope_poisson_pvals.csv", sep="/"), row.names = F)
+
+all_pval <- rbind(cd8_2_qpois, cd8_qpois, cd4_qpois)
+write.csv(all_pval, file = paste(analysis_dir, "Histology", "RNAscope_quasipoisson_pvals.csv", sep="/"), row.names = F)
+
+
+cp_pois <- cp_counts %>% group_by(probe) %>% group_modify(run_pois)
+cp_qpois <- cp_counts %>% group_by(probe) %>% group_modify(run_qpois)
+
+write.csv(cp_pois, file = paste(analysis_dir, "Histology", "RNAscope_CPCounts_poisson_pvals.csv", sep="/"), row.names = F)
+write.csv(cp_qpois, file = paste(analysis_dir, "Histology", "RNAscope_CPCounts_quasipoisson_pvals.csv", sep="/"), row.names = F)
+```
+
+
+
+#Fig. S13
+circulatory markers and eomes in CD8 T cells
+
+Make enrichment plot next to DotPlot
+
+```{r}
+p2 <- generate_patient_proportion_plot(cd8_subset,
+                                       ident_var = "ident_L3_plot",
+                                       group_var = "Cohort",
+                                       group_selection = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  ylab("Enrichment") +
+  xlab("") +
+  theme_light() +
+  theme(legend.position="right",
+        axis.text.y = element_blank(),
+        axis.ticks.y=element_blank()) +
+  scale_fill_discrete(labels=c("Active_MC" = "Active MC", "Chron_Diarr"="Chronic\nDiarrhea", "Unaffected"="Unaffected")) +
+  coord_flip()
+
+#reorder identity factor levels so dotplot matches enrichment order
+cd8_subset@meta.data$ident_L3_plot <- factor(cd8_subset@meta.data$ident_L3_plot, levels=levels(p2$data$ident))
+cd8_subset <- SetIdent(cd8_subset, value = "ident_L3_plot")
+
+
+p1 <- DotPlot(cd8_subset, "RNA", c("SELL", "S1PR1", "KLF2", "EOMES"), group.by = "ident_L3_plot") +
+  theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1, face="italic"),
+        axis.text.y = element_markdown(),
+        legend.position = "left") +
+  guides(colour=guide_colorbar(title="Ave.\nExp.", order = 1),
+         size=guide_legend(title="Pct.\nExp.", order = 2))
+
+
+
+pdf(file=paste(fig_dir, "SuppFig13_DotPlot_Circ_T.pdf", sep="/"), width = 8, height=5)
+p1 + p2 + plot_layout(widths = c(1, 2))
+dev.off()
+
+
+
+#revert back to alphabetical order
+cd8_subset@meta.data$ident_L3_plot <- factor(cd8_subset@meta.data$ident_L3_plot, levels=sort(unique(cd8_subset@meta.data$ident_L3_plot)))
+cd8_subset <- SetIdent(cd8_subset, value = "ident_L3_plot")
+
+```
+
+
+#Fig. S14
+
+```{r}
+pdf(file=paste(fig_dir, "SuppFig14_CD4_Boxplot.pdf", sep="/"), width = 7, height = 3)
+ggplot(subset(cellcounts, Stain=="CD4"), aes(x=Cohort, y=count)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15) +
+  facet_wrap(~Localization, scales = "fixed") +
+  ylab("Cell Count") +
+  theme_bw() +
+  scale_x_discrete(labels=c("Active_MC" = "Active MC", "Chron_Diarr"="Chronic Diarrhea", "Unaffected"="Unaffected")) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  ggtitle("CD4+ Cells")
+dev.off()
+
+
+
+
+source_data <- subset(cellcounts, Stain=="CD4")
+
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS14B.csv", sep="/"), row.names = F)
+
+```
+
+
+#Fig. S15
+
+```{r}
+
+pdf(file=paste(fig_dir, "SuppFig15_FOXP3_Boxplot.pdf", sep="/"), width = 7, height = 3)
+ggplot(subset(cellcounts, Stain=="FOXP3"), aes(x=Cohort, y=count)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15) +
+  facet_wrap(~Localization, scales = "fixed") +
+  ylab("Cell Count") +
+  theme_bw() +
+  scale_x_discrete(labels=c("Active_MC" = "Active MC", "Chron_Diarr"="Chronic Diarrhea", "Unaffected"="Unaffected")) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  ggtitle("FOXP3+ Cells")
+dev.off()
+
+
+source_data <- subset(cellcounts, Stain=="FOXP3")
+
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS15B.csv", sep="/"), row.names = F)
+
+```
+
+
+
+#Fig. S16
+cytokine and chemokines that were downloaded from GO annotations
+```{r}
+all_cyt <- all_cyt[,1]
+all_cyt <- unique(all_cyt)
+
+proinf <- proinf[,1]
+proinf <- unique(proinf)
+proinf <- intersect(proinf, all_cyt)
+
+antinf <- antinf[,1]
+antinf <- unique(antinf)
+antinf <- intersect(antinf, all_cyt)
+
+all_chem <- all_chem[,1]
+all_chem <- unique(all_chem)
+
+
+#selection of profibrotic factors
+profib <- c("TGFB1", "TGFB2", "TGFB3", "PDGFA", "PDGFB", "PDGFC", "PDGFD", "FGF2", "VEGFA", "VEGFB", "VEGFC", "PGF", "CTGF")
+
+
+#grouped heatmap
+gene_grouping <- data.frame(gene=c(sort(profib),
+                                   sort(proinf),
+                                   sort(antinf),
+                                   sort(all_chem)),
+                            group=c(rep("Pro-Fibrotic", length(profib)),
+                                    rep("Pro-Inflamm.", length(proinf)),
+                                    rep("Anti-Inflamm.", length(antinf)),
+                                    rep("Chemokines", length(all_chem))))
+
+tmp <- subset(de_table_format, gene %in% gene_grouping$gene)
+tmp_plot <- make_heatmap_mc_rowGroups_left(tmp, x_sep = 0.01, y_sep=0.03, linesz = 0.5, clust_group = cluster_labs_format, gene_group=gene_grouping, presorted=T)
+
+
+pdf(file=paste(fig_dir, "SuppFig16_DEGs_grouped.pdf", sep="/"), width = 13, height=15)
+tmp_plot + theme(legend.position="bottom", axis.title.x=element_blank()) + guides(fill=guide_legend(nrow=1,byrow=TRUE))
+dev.off()
+
+jpeg(file=paste(fig_dir, "SuppFig16_DEGs_grouped.jpg", sep="/"), width = 13, height=15, units="in", res=300)
+tmp_plot + theme(legend.position="bottom", axis.title.x=element_blank()) + guides(fill=guide_legend(nrow=1,byrow=TRUE))
+dev.off()
+```
+
+
+
+
+#Fig. S17
+UMAP
+```{r}
+mac_subset <- imm_sub_2$Macrophage
+
+
+mac_subset@meta.data$ident_L3 <- gsub(pattern = "Macrophage",
+                                      replacement = "M\u03d5",
+                                      mac_subset@meta.data$ident_L3)
+
+mac_subset <- format_for_umap(mac_subset, "ident_L3", "ident_L3_format", gene_mod)
+
+mac_subset <- SetIdent(mac_subset, val="ident_L3_format")
+
+
+pdf(file=paste(fig_dir, "SuppFig17_umap_Macrophage.pdf", sep="/"), width = 4.5, height=4.5)
+tmp <- format_plot_umap_with_num(mac_subset, "ident_L3", gene_mod, lp="bottom", nc=2)
+dev.off()
+
+
+jpeg(file=paste(fig_dir, "SuppFig17_umap_Macrophage.jpg", sep="/"), width = 4.5, height=4.5, units="in", res=300)
+tmp <- format_plot_umap_with_num(mac_subset, "ident_L3", gene_mod, lp="bottom", nc=2)
+dev.off()
+```
+
+
+Sig Genes visualization
+```{r}
+mac_subset <- format_seur_for_plot(mac_subset, "ident_L3", "ident_L3_format", gene_mod)
+mac_subset <- SetIdent(mac_subset, val="ident_L3_format")
+
+
+features.plot <- c("C1QA", "LYZ","MMP12", "KLF6", "MT1E", "CCL3", "CCL4")
+
+pdf(file=paste(fig_dir, "SuppFig17_stacked_violin_Mac.pdf", sep="/"), width = 3, height=3.5)
+StackedVlnPlot(mac_subset, features.plot, y_3_pt = T)
+dev.off()
+
+jpeg(file=paste(fig_dir, "SuppFig17_stacked_violin_Mac.jpg", sep="/"), width = 3, height=3.5, units="in", res=300)
+StackedVlnPlot(mac_subset, features.plot, y_3_pt = T)
+dev.off()
+
+```
+
+Proportion plots
+```{r}
+pdf(file=paste(fig_dir, "SuppFig17_PropPlot_Macrophage.pdf", sep="/"), width = 3, height=2.7)
+print(generate_patient_proportion_plot(mac_subset,
+                                       ident_var = "ident_L3_format",
+                                       group_var = "Cohort",
+                                       group_selection = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+        ylab("Enrichment") +
+        xlab("") +
+        theme(legend.position="bottom",
+              axis.text.x = element_markdown(margin=margin(b=-0.75, unit='cm'))) +
+        guides(fill=F))
+dev.off()
+
+
+jpeg(file=paste(fig_dir, "SuppFig17_PropPlot_Macrophage.jpg", sep="/"), width = 2, height=2.7, units="in", res=300)
+print(generate_patient_proportion_plot(mac_subset,
+                                       ident_var = "ident_L3_format",
+                                       group_var = "Cohort",
+                                       group_selection = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+        ylab("Enrichment") +
+        xlab("") +
+        theme(legend.position="bottom",
+              axis.text.x = element_markdown(margin=margin(b=-0.75, unit='cm'))) +
+        guides(fill=F))
+dev.off()
+
+```
+
+
+Boxplots
+```{r}
+
+jpeg(file=paste(fig_dir, "SuppFig17_BoxPlot_Macrophage.jpg", sep="/"), width = 4, height=3.5, units="in", res=300)
+make_boxplot_idents_separate(mac_subset,
+                             ident_var = "ident_L3_format",
+                             selected_name = "Macrophage Cells",
+                             selected_groups = c("Active_MC", "Chron_Diarr", "Unaffected")) +
+  theme(axis.title.x=element_blank(),
+        legend.position = "bottom",
+        axis.text.x = element_markdown(margin=margin(b=-0.4, unit='cm')))
+dev.off()
+
+
+```
+
+
+#Fig. S21
+IFN stimulated genes, and IFNG:
+```{r}
+tst_genes <- c("IFNG", "STAT1", "IFI27", "IFITM3", "GBP1")
+tmp <- subset(de_table_format, gene %in% tst_genes)
+tmp_plot <- make_heatmap_mc(tmp, x_sep = 0.01, y_sep=0.03, linesz = 0.5, clust_group = cluster_labs_format)
+
+jpeg(file=paste(fig_dir, "SuppFigS21_IFN_DEGs.jpg", sep="/"), width = 13, height=4, units="in", res=300)
+tmp_plot + theme(legend.position="bottom", axis.title.x=element_blank()) + guides(fill=guide_legend(nrow=1,byrow=TRUE))
+dev.off()
+
+```
+
+
+
+
+
+
+#Fig. S22
+GWAS genes expression in each cluster only for MC:
+```{r}
+gwas_genes <- c("HLA-B", "HLA-DRB1", "HLA-DQB1", "HLA-DQA1", "HLA-C", "CLEC16A", "RMI2")
+
+pdf(file=paste(fig_dir, "SuppFig22_DotPlot_GWAS.pdf", sep="/"), width = 7, height=12)
+DotPlot(subset(seur_har$imm, Cohort=="Active_MC"), "RNA", gwas_genes, group.by = "ident_L3_plot") +
+  theme(axis.text.y=element_markdown(),
+        axis.text.x=element_text(face="italic", angle=60, hjust=1, vjust=1)) +
+  xlab("Gene") +
+  ylab("Cells")
+dev.off()
+
+```
+
+
+
+#Fig. S23
+
+Examining for differences between collagenous and lymphocytic colitis.
+
+```{r}
+#Proportion plots
+pdf(file=paste(fig_dir, "SuppFig23_PropPlot_coll-vs-lymph.pdf", sep="/"), width = 4, height=3)
+print(generate_proportion_plot(seur_har$imm,
+                               ident_var = "ident_PLOT_format",
+                               group_var = "Cohort_Sub",
+                               order.by = "Act_MC_Lym",
+                               group_selection = c("Act_MC_Lym", "Act_MC_Coll")) +
+        ylab("Enrichment") +
+        xlab("") +
+        scale_fill_discrete(labels=c("Act_MC_Lym" = "Active MC\nLymphocytic", "Act_MC_Coll"="Active MC\nCollagenous")) +
+        theme(legend.position="bottom",
+              axis.text.x = element_markdown(margin=margin(b=-0.75, unit='cm'))))
+dev.off()
+
+
+
+cd8_subset@meta.data$Cohort_Sub[cd8_subset@meta.data$Cohort_Sub=="Act_MC_Coll"] <- "MC_Collagenous"
+cd8_subset@meta.data$Cohort_Sub[cd8_subset@meta.data$Cohort_Sub=="Act_MC_Lym"] <- "MC_Lymphocytic"
+
+
+
+
+
+tmp <- make_boxplot_idents_separate(cd8_subset,
+                                    ident_var = "ident_L3_plot",
+                                    selected_name = "CD8 T cells",
+                                    group_var = "Cohort_Sub",
+                                    selected_groups = c("MC_Collagenous", "MC_Lymphocytic", "Chron_Diarr", "Unaffected")) +
+  ylab("Proportion") +
+  xlab("") +
+  theme(legend.position="bottom",
+        legend.title = element_blank(),
+        axis.text.x = element_markdown(margin=margin(b=-0.8, unit='cm')),
+        plot.title=element_markdown())
+
+
+source_data <- tmp$data
+colnames(source_data)[3] <- "Identity"
+source_data <- source_data[,c("Patient", "Cohort_Sub", "Identity", "prop")]
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS23B.csv", sep="/"), row.names = F)
+
+
+
+pdf(file=paste(fig_dir, "SuppFig23_BoxPlot_CD8_subsets_coll-vs-lymph.pdf", sep="/"), width = 6, height=4)
+print(tmp)
+dev.off()
+
+
+
+cd4_subset@meta.data$Cohort_Sub[cd4_subset@meta.data$Cohort_Sub=="Act_MC_Coll"] <- "MC_Collagenous"
+cd4_subset@meta.data$Cohort_Sub[cd4_subset@meta.data$Cohort_Sub=="Act_MC_Lym"] <- "MC_Lymphocytic"
+
+
+
+tmp <- make_boxplot_idents_separate(cd4_subset,
+                                    ident_var = "ident_L3_plot",
+                                    selected_name = "CD4 T cells",
+                                    group_var = "Cohort_Sub",
+                                    selected_groups = c("MC_Collagenous", "MC_Lymphocytic", "Chron_Diarr", "Unaffected")) +
+  ylab("Proportion") +
+  xlab("") +
+  theme(legend.position="bottom",
+        legend.title = element_blank(),
+        axis.text.x = element_markdown(margin=margin(b=-0.8, unit='cm')),
+        plot.title=element_markdown()) +
+  scale_fill_discrete(labels=c("MC_Lymphocytic" = "Active MC\nLymphocytic", "MC_Collagenous"="Active MC\nCollagenous", "Chron_Diarr" = "Chronic\nDiarrhea"))
+
+source_data <- tmp$data
+colnames(source_data)[3] <- "Identity"
+source_data <- source_data[,c("Patient", "Cohort_Sub", "Identity", "prop")]
+write.csv(source_data, file=paste(sourced_dir, "SourceData_FigS23C.csv", sep="/"), row.names = F)
+
+
+
+pdf(file=paste(fig_dir, "SuppFig23_BoxPlot_CD4_subsets_lymph.pdf", sep="/"), width = 6, height=4)
+print(tmp)
+dev.off()
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+#Markers
+Export table of markers
+
+```{r}
+get_markers <- function(seur_list, fdr=0.05){
+  return_marks <- data.frame()
+  for(i in names(seur_list)){
+    tmp_marks <- data.frame()
+    seur_obj <- seur_list[[i]]
+    tmp_marks <- FindAllMarkers(seur_obj)
+    if(nrow(tmp_marks) > 0){#only filter and add metadata if there were results
+      tmp_marks$ref_cells <- i
+      tmp_marks <- subset(tmp_marks, p_val_adj <= fdr)
+    }
+    if(nrow(tmp_marks) > 0){#only report comps with at least 1 sig DEG
+      return_marks <- rbind(return_marks, tmp_marks)
+    }
+  }
+  return(return_marks)
+}
+
+
+assign_ident <- function(seur_list, to_assign){
+  for(i in names(seur_list)){
+    seur_list[[i]] <- SetIdent(seur_list[[i]], value=to_assign)
+  }
+  return(seur_list)
+}
+
+
+imm_sub <- assign_ident(imm_sub, "ident_L2")
+imm_sub_2 <- assign_ident(imm_sub_2, "ident_L3")
+seur_har <- assign_ident(seur_har, "ident_L1")
+```
+
+
+Enable parallel processing
+```{r}
+library(future)
+plan("multisession", workers = 20)
+```
+
+```{r}
+options(future.globals.maxSize= 1024*1024^2)
+
+sub0_marks <- get_markers(seur_har, fdr=0.05)
+sub0_marks$subclust_level <- 0
+
+sub1_marks <- get_markers(imm_sub, fdr=0.05)
+sub1_marks$subclust_level <- 1
+
+sub2_marks <- get_markers(imm_sub_2, fdr=0.05)
+sub2_marks$subclust_level <- 2
+
+```
+
+back to single-threaded:
+```{r}
+plan("multisession", workers = 1)
+```
+
+Save to file
+```{r}
+all_marks <- rbind(sub0_marks, sub1_marks, sub2_marks)
+write.csv(all_marks, file = paste(marks_dir, "Supp_Table_1_Marks_per_cluster.csv", sep="/"), row.names = F)
+```
+
+or read from file instead:
+```{r}
+#all_marks <- read.csv(file = paste(marks_dir, "Supp_Table_1_Marks_per_cluster.csv", sep="/"))
+```
+
+
+
+
+
+
+
+

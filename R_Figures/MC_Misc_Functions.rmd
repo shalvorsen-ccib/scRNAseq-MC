@@ -1,0 +1,1033 @@
+---
+title: "MC_Misc_Functions"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+
+
+
+
+#Formatting for UMAP and PLOTS
+text formatting for UMAP and plots.
+Want to have gene names italicized, and superscript "Hi" or "Lo" instead of + or -
+
+the best way I found to do this is different for UMAP or other plots. Difference is other plots have gene names in axes or titles, so I can use ggtext package and format the text as a markdown text element. UMAP cluster labels are in a geom_annotate layer (I believe). So I would have to rewrite the DimPlot function to call a different plot layer instead of stock annotate (no way I found of changing this after-the-fact). Plus, this uses "repel" for text labels, which I don't believe has a corollary in ggtext package.
+
+So for UMAP, I use base R "expression" for formatting. And then I change the ggplot options after generating the plot, to set it for expression parsing instead of literal text string.
+```{r}
+format_for_umap <- function(seur_obj, ident_base, ident_format, g_names){
+  #if setting numbers flag to T, the labels with have number prepended to them. This is intended for plotting on the UMAP and making cluster labels easier to see
+  #modify cluster names with base R "expression" formatting
+  seur_obj@meta.data[,ident_format] <- as.character(seur_obj@meta.data[,ident_base])
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = " ", replacement = "~")
+  #Replace CD4+ and CD8+ with just CD4 or CD8
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "CD4\\+", replacement = "CD4")
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "CD8\\+", replacement = "CD8")
+  for(i in g_names){
+    if(i=="Gzm"){
+      #handle this case separately...
+      next
+    }
+    seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = i, replacement = paste0("italic(", i, ")"))
+  }
+  if("Gzm" %in% g_names){
+    seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "Gzm", replacement = paste0("italic(", "GZM", ")"))
+  }
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "Hi", replacement = "^Hi")
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "Lo", replacement = "^Lo")
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "\\+", replacement = "^Hi")
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "\\- ", replacement = "^Lo ")
+  return(seur_obj)
+}
+
+DimPlot_format <- function(seur_obj, ...){
+  #generate DimPlot for UMAP and then modify parameter to allow for parsing text. Return ggplot object
+  tmp <- DimPlot(seur_obj, reduction = "umap", label=T, repel=T, ...) + guides(colour=F)
+  tmp$layers[[2]]$geom_params$parse <- T
+  return(tmp)
+}
+
+rename_plot_labels <- function(plot_obj){
+  #This function will take a ggplot2 object, generated from Seurat (such as from DimPlot()), INCLUDING LABELS,
+  #and modify the on-plot text by performing a grep substitution -- everything after the first underscore will be deleted.
+  require(grid)
+  plot_obj_b <- ggplot_build(plot_obj)
+  plot_obj_b$data[[2]]$label <- gsub(pattern = "_.+",
+                                     replacement = "",
+                                     x = plot_obj_b$data[[2]]$label,
+                                     perl = T)
+  return(ggplot_gtable(plot_obj_b))
+}
+
+
+format_plot_umap_with_num <- function(seur_obj, ident_base, g_names, lp="bottom", nc=3, ...){
+  #Make UMAP Plot, but have the on-plot annotations as numbers and the legend with full names
+  ident_plot <- paste0(ident_base, "_plot")
+  seur_obj <- format_seur_for_plot(seur_obj, ident_base, ident_plot, g_names)
+  seur_obj@meta.data[,ident_plot] <- as.factor(seur_obj@meta.data[,ident_plot])
+  seur_obj@meta.data[,ident_plot] <- factor(seur_obj@meta.data[,ident_plot],
+                                              levels=sort(unique(seur_obj@meta.data[,ident_plot])))
+  levels(seur_obj@meta.data[,ident_plot]) <- paste(c(1:length(levels(seur_obj@meta.data[,ident_plot]))),
+                                                     levels(seur_obj@meta.data[,ident_plot]),
+                                                     sep="_")
+  DP <- DimPlot(seur_obj, reduction = "umap", label=T, group.by = ident_plot, ...) +
+    theme(legend.text = element_markdown(),
+          legend.position = lp) +
+    guides(col = guide_legend(ncol = nc, override.aes = list(size=5)))
+  DPF <- rename_plot_labels(DP)
+  grid.draw(DPF)
+  return(DPF)
+}
+
+
+
+format_seur_for_plot <- function(seur_obj, ident_base, ident_format, g_names){
+  seur_obj@meta.data[,ident_format] <- as.character(seur_obj@meta.data[,ident_base])
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "CD4\\+", replacement = "CD4")
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "CD8\\+", replacement = "CD8")
+  for(i in g_names){
+    if(i=="Gzm"){
+      #handle this case separately...
+      next
+    }
+    seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = i, replacement = paste0("*", i, "*"))
+  }
+  if("Gzm" %in% g_names){
+    seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "Gzm", replacement = paste0("*", "GZM", "*"))
+  }
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "Hi", replacement = "^Hi")
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "Lo", replacement = "^Lo")
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "\\+", replacement = "^Hi")
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "\\- ", replacement = "^Lo ")
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "\\-$", replacement = "^Lo")
+  return(seur_obj)
+}
+
+
+
+format_for_heatmap <- function(.deg_tab, col_from, col_to, g_names){
+  .deg_tab[,col_to] <- as.character(.deg_tab[,col_from])
+  .deg_tab[,col_to] <- gsub(.deg_tab[,col_to], pattern = "CD4\\+", replacement = "CD4")
+  .deg_tab[,col_to] <- gsub(.deg_tab[,col_to], pattern = "CD8\\+", replacement = "CD8")
+  for(i in g_names){
+    if(i=="Gzm"){
+      #handle this case separately...
+      next
+    }
+    .deg_tab[,col_to] <- gsub(.deg_tab[,col_to], pattern = i, replacement = paste0("*", i, "*"))
+  }
+  if("Gzm" %in% g_names){
+    .deg_tab[,col_to] <- gsub(.deg_tab[,col_to], pattern = "Gzm", replacement = "*GZM*")
+  }
+  .deg_tab[,col_to] <- gsub(.deg_tab[,col_to], pattern = "Hi", replacement = "^Hi")
+  .deg_tab[,col_to] <- gsub(.deg_tab[,col_to], pattern = "Lo", replacement = "^Lo")
+  .deg_tab[,col_to] <- gsub(.deg_tab[,col_to], pattern = "\\+", replacement = "^Hi")
+  .deg_tab[,col_to] <- gsub(.deg_tab[,col_to], pattern = "\\- ", replacement = "^Lo ")
+  .deg_tab[,col_to] <- gsub(.deg_tab[,col_to], pattern = "\\-$", replacement = "^Lo")
+  return(.deg_tab)
+}
+
+
+
+format_for_cpdb <- function(.cpdb, g_names){
+  new_colnames <- colnames(.cpdb)
+  new_colnames <- gsub(new_colnames, pattern = "CD4\\+", replacement = "CD4")
+  new_colnames <- gsub(new_colnames, pattern = "CD8\\+", replacement = "CD8")
+  for(i in g_names){
+    if(i=="Gzm"){
+      #handle this case separately...
+      next
+    }
+    new_colnames <- gsub(new_colnames, pattern = i, replacement = paste0("*", i, "*"))
+  }
+  if("Gzm" %in% g_names){
+    new_colnames <- gsub(new_colnames, pattern = "Gzm", replacement = "*GZM*")
+  }
+  new_colnames <- gsub(new_colnames, pattern = "Hi", replacement = "<sup>Hi</sup>")
+  new_colnames <- gsub(new_colnames, pattern = "Lo", replacement = "<sup>Lo</sup>")
+  new_colnames <- gsub(new_colnames, pattern = "\\+", replacement = "<sup>Hi</sup>")
+  new_colnames <- gsub(new_colnames, pattern = "\\- ", replacement = "<sup>Lo</sup> ")
+  new_colnames <- gsub(new_colnames, pattern = "\\-$", replacement = "<sup>Lo</sup>")
+  new_colnames <- gsub(new_colnames, pattern = "\\-\\|", replacement = "<sup>Lo</sup>|")
+  colnames(.cpdb) <- new_colnames
+  return(.cpdb)
+}
+
+format_seur_for_cpdb <- function(seur_obj, ident_base, ident_format, g_names){
+  seur_obj@meta.data[,ident_format] <- as.character(seur_obj@meta.data[,ident_base])
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "CD4\\+", replacement = "CD4")
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "CD8\\+", replacement = "CD8")
+  for(i in g_names){
+    if(i=="Gzm"){
+      #handle this case separately...
+      next
+    }
+    seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = i, replacement = paste0("*", i, "*"))
+  }
+  if("Gzm" %in% g_names){
+    seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "Gzm", replacement = paste0("*", "GZM", "*"))
+  }
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "Hi", replacement = "<sup>Hi</sup>")
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "Lo", replacement = "<sup>Lo</sup>")
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "\\+", replacement = "<sup>Hi</sup>")
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "\\- ", replacement = "<sup>Lo</sup> ")
+  seur_obj@meta.data[,ident_format] <- gsub(seur_obj@meta.data[,ident_format], pattern = "\\-$", replacement = "<sup>Lo</sup> ")
+  return(seur_obj)
+}
+
+
+replace_name_cpdb <- function(.cpdb, old_name, new_name){
+  new_colnames <- colnames(.cpdb)
+  new_colnames <- gsub(new_colnames, pattern = old_name, replacement = new_name, fixed=T)
+  colnames(.cpdb) <- new_colnames
+  return(.cpdb)
+}
+
+```
+
+
+pheatmap internal functions overload to allow for formatting.
+To allow for axis label formatting in pheatmap is not as simple as ggplot. I cannot just modify the theme afterwards to allow for markdown formatting.
+To do the formatting, I looked at the source code of pheatmap. It calls two functions to draw text grobs for each text label. Here, I copied the function exactly, but replaced the textgrob call with a richtext_grob. This is a different type of grob that allows for formatting.
+NOTE I used pheatmap package version 1.0.12 for these function codes.
+The code below will make the new functions, and overload them on top of the original functions within the pheatmap namespace. Now you can use markdown formatted (for gridtext package) names.
+
+Also NOTE, that for some reason superscript doesn't work with the "^" character. You have to use HTML like tags <sup>SUPERSCRIPT</sup> to make it work.
+```{r}
+
+override_pheatmap <- function(){
+  
+  require(gridtext)
+  require(pheatmap)
+  
+  draw_colnames_format = function(coln, gaps, vjust_col, hjust_col, angle_col, ...){
+    coord = find_coordinates(length(coln), gaps)
+    x = coord$coord - 0.5 * coord$size
+    
+    res = richtext_grob(coln, x = x, y = unit(1, "npc") - unit(3, "bigpts"), vjust = vjust_col, hjust = hjust_col, rot = angle_col, gp = gpar(...))
+    
+    return(res)
+  }
+  
+  draw_rownames_format = function(rown, gaps, ...){
+    coord = find_coordinates(length(rown), gaps)
+    y = unit(1, "npc") - (coord$coord - 0.5 * coord$size)
+    
+    res = richtext_grob(rown, x = unit(3, "bigpts"), y = y, vjust = 0.5, hjust = 0, gp = gpar(...))
+    
+    return(res)
+  }
+  
+  environment(draw_colnames_format) <- asNamespace('pheatmap')
+  assignInNamespace("draw_colnames", draw_colnames_format, ns = "pheatmap")
+  environment(draw_rownames_format) <- asNamespace('pheatmap')
+  assignInNamespace("draw_rownames", draw_rownames_format, ns = "pheatmap")
+}
+```
+
+
+
+
+
+#Patient Proportion plot
+
+basically a proportion plot, presented as a stacked bar plot, but different cohorts are further subdivided by patients.
+
+```{r}
+generate_patient_proportion_plot <- function(seur_obj, ident_var, group_var, order.by="Active_MC", group_selection=NA, custom_ordering=NA, seur_cohort_obj=NA, patient_var="Patient"){
+  require(ggplot2)
+  require(plyr)
+  col_select <- c(group_var, ident_var, patient_var)
+  my_meta <- seur_obj@meta.data[,col_select]
+  colnames(my_meta) <- c("group", "ident", "patient")
+  
+  ident_meta <- ddply(.data = my_meta, .variables = c("patient", "ident"), .fun = summarise,
+                        nCells = length(patient)
+                        )
+  
+  #Ensure all identities are represented in each group:
+  
+  all_idents <- unique(ident_meta$ident)
+  
+  for(g in unique(ident_meta$patient)){
+    meta_sub <- subset(ident_meta, patient==g)
+    idents_not_present <- all_idents[!(all_idents %in% meta_sub$ident)]
+    for(ident in idents_not_present){
+      ident_meta <- rbind(ident_meta, data.frame(patient=g, ident=ident, nCells=0))
+    }
+  }
+
+  #number of cells per patient
+  patient_meta <- ddply(.data = my_meta, .variables = c("patient"), .fun = summarise,
+                      patient_cells = length(patient),
+                      group=unique(group)
+                      )
+  #number of patients in each group
+  group_meta <- ddply(.data = patient_meta, .variables = c("group"), .fun = summarise,
+                      group_n = length(patient)
+                      )
+  
+  ident_meta <- merge(ident_meta, patient_meta, by="patient", all=T)
+  ident_meta <- merge(ident_meta, group_meta, by="group", all.x=T)
+  ident_meta$ident_patient_prop <- ident_meta$nCells/ident_meta$patient_cells
+  #normalize to patient number per cohort. This ensures cohorts with variable numbers of patients get equal representation
+  ident_meta$ident_patient_prop <- ident_meta$ident_patient_prop / ident_meta$group_n
+  
+  
+  if(length(group_selection)>1){
+    ident_meta <- subset(ident_meta, group %in% group_selection)
+  }
+  
+  get_enrich <- function(x, group_to_select){
+    sel_prop <- sum(subset(x, group==group_to_select)[,"ident_patient_prop"])
+    my_ret <- c(sel_prop / sum(x[,"ident_patient_prop"]))
+  }
+  if(length(custom_ordering) <= 1){
+    my_enrichment <- ddply(ident_meta, c("ident"), get_enrich, group_to_select=order.by)
+    my_ordering <- my_enrichment[order(my_enrichment$V1, decreasing=T),]
+    ordering_levels <- my_ordering$ident
+  }
+  else{
+    ordering_levels <- custom_ordering
+  }
+  ident_meta$ident <- factor(ident_meta$ident, ordered=T, levels=ordering_levels)
+  
+  
+  patient_ordering <- ddply(patient_meta, c("group"), function(x) {
+    tmp_x <- x[order(x$patient_cells, decreasing=T),]
+    tmp_x$alpha <- seq(from=1, to=0.3, length.out=nrow(tmp_x))
+    tmp_x
+    })
+  patient_ordering$patient <- as.character(patient_ordering$patient)
+  #ident_meta$patient <- as.character(ident_meta$patient)
+  ident_meta$alpha <- patient_ordering$alpha[match(ident_meta$patient, patient_ordering$patient)]
+  ident_meta$alpha <- as.numeric(ident_meta$alpha)
+  ident_meta$patient <- factor(ident_meta$patient, ordered=T, levels=patient_ordering$patient)
+  
+  
+
+  g <- ggplot(ident_meta, aes(x=ident, y=ident_patient_prop, order=patient)) +
+    geom_col(aes(fill=group, alpha=alpha), col="NA", size=0.1, position=position_fill()) +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+    labs(x=ident_var, y="enrichment", fill=group_var) +
+    scale_alpha_identity()
+  return(g)
+}
+```
+
+
+#Proportion plot showing relative proportions of the different cell types:
+similar to proportion plot above but not segregated by patient, only by cohort
+```{r}
+generate_proportion_plot <- function(seur_obj, ident_var, group_var, order.by="Active_MC", group_selection=NA, custom_ordering=NA, seur_cohort_obj=NA){
+  require(ggplot2)
+  require(plyr)
+  col_select <- c(group_var, ident_var)
+  my_meta <- seur_obj@meta.data[,col_select]
+  colnames(my_meta) <- c("group", "ident")
+  
+  ident_meta <- ddply(.data = my_meta, .variables = c("group", "ident"), .fun = summarise,
+                        nCells = length(group)
+                        )
+  
+  #Ensure all identities are represented in each group:
+  
+  all_idents <- unique(ident_meta$ident)
+  
+  for(g in unique(ident_meta$group)){
+    meta_sub <- subset(ident_meta, group==g)
+    idents_not_present <- all_idents[!(all_idents %in% meta_sub$ident)]
+    for(ident in idents_not_present){
+      ident_meta <- rbind(ident_meta, data.frame(group=g, ident=ident, nCells=0))
+    }
+  }
+
+  group_meta <- ddply(.data = my_meta, .variables = c("group"), .fun = summarise,
+                      group_cells = length(group)
+                      )
+  
+  ident_meta <- merge(ident_meta, group_meta, by="group", all=T)
+  ident_meta$ident_group_prop <- ident_meta$nCells/ident_meta$group_cells
+  if(length(group_selection)>1){
+    ident_meta <- subset(ident_meta, group %in% group_selection)
+  }
+  get_enrich <- function(x, group_to_select){
+    sel_prop <- subset(x, group==group_to_select)[,"ident_group_prop"]
+    my_ret <- c(sel_prop / sum(x[,"ident_group_prop"]))
+  }
+  if(length(custom_ordering) <= 1){
+    my_enrichment <- ddply(ident_meta, c("ident"), get_enrich, group_to_select=order.by)
+    my_ordering <- my_enrichment[order(my_enrichment$V1, decreasing=T),]
+    ordering_levels <- my_ordering$ident
+  }
+  else{
+    ordering_levels <- custom_ordering
+  }
+  ident_meta$ident <- factor(ident_meta$ident, ordered=T, levels=ordering_levels)
+  g <- ggplot(ident_meta, aes(x=ident, y=ident_group_prop)) + geom_col(aes(fill=group), position=position_fill()) + theme(axis.text.x = element_text(angle = 60, hjust = 1)) + labs(x=ident_var, y="proportion", fill=group_var)
+  return(g)
+}
+```
+
+
+
+
+
+#Boxplot of patient proportions
+
+Make boxplots of the proportions of a given cell type, stratified by given variable.
+
+```{r}
+
+make_boxplot <- function(seur_obj, ident_var, included_idents, patient_var="Patient", group_var="Cohort", selected_name="NA", selected_groups=NA){
+  patient_data <- seur_obj@meta.data
+  patient_data$selected_ident <- patient_data[,ident_var] %in% included_idents
+  props <- ddply(patient_data, c(patient_var, group_var), summarise,
+                 num_selected=sum(selected_ident),
+                 total_num = length(selected_ident),
+                 prop_selected = num_selected / total_num
+                 )
+  if(length(selected_groups)>1){
+    props <- subset(props, get(group_var) %in% selected_groups)
+  }
+  
+  return(ggplot(props, aes_string(x=group_var, y="prop_selected", fill=group_var)) +
+           geom_boxplot(outlier.shape = NA) +
+           geom_jitter(width = 0.15) +
+           scale_x_discrete(breaks = c("Active_MC", "Chron_Diarr", "Unaffected"), labels=c("Active MC", "Chronic\nDiarrhea", "Unaffected")) +
+           labs(y="proportion", title = paste0(selected_name)) +
+           theme_light() +
+           theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), axis.title.x = element_blank()))
+}
+
+```
+
+
+#Boxplot of patient proportions with multiple groups
+
+Make boxplots of the proportions of a given cell type, stratified by given variable, and each identity plotted separately
+
+```{r}
+make_boxplot_idents_separate <- function(seur_obj, ident_var, included_idents=NA, patient_var="Patient", group_var="Cohort", selected_name="NA", selected_groups=NA, pt.size=0.75){
+  #Default behavior when included_idents is not specified is to use all idents
+  patient_data <- seur_obj@meta.data
+  if(is.na(included_idents)){
+    included_idents <- unique(patient_data[,ident_var])
+  }
+  patient_data$selected_ident <- patient_data[,ident_var] %in% included_idents
+  patient_cells <- ddply(patient_data, c(patient_var, group_var), summarise,
+                 total_num = length(selected_ident)
+                 )
+  patient_cells <- patient_cells[,c(patient_var, "total_num")]
+  patient_data <- subset(patient_data, selected_ident)
+  props <- ddply(patient_data, c(patient_var, group_var, ident_var), summarise,
+                 num_selected=sum(selected_ident)
+                 )
+  props <- merge(props, patient_cells, by=patient_var, all=T)
+  props$prop <- props$num_selected / props$total_num
+  
+  if(length(selected_groups)>1){
+    props <- subset(props, get(group_var) %in% selected_groups)
+  }
+  #sort in alphabetical order:
+  props[,ident_var] <- factor(props[,ident_var], levels=sort(unique(props[,ident_var])))
+
+  g <- ggplot(props, aes(x=get(ident_var), y=prop, fill=get(group_var))) +
+    geom_boxplot(outlier.shape = NA) +
+    scale_fill_discrete(labels=c("Active_MC" = "Active MC", "Chron_Diarr"="Chronic\nDiarrhea", "Unaffected"="Unaffected")) +
+    geom_point(position = position_jitterdodge(0.05), size=pt.size) +
+    labs(y="proportion", title = paste0( selected_name, " per patient")) +
+    theme_light() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+    guides(fill = guide_legend(override.aes = list(shape = NA),
+                               title=group_var))
+  return(g)
+}
+
+```
+
+
+
+
+
+#Stacked Violin Plots
+This code is mostly taken from a post from Ming Tang about this, from this link:
+https://divingintogeneticsandgenomics.rbind.io/post/stacked-violin-plot-for-visualizing-single-cell-data-in-seurat/
+
+using ggtext package element_markdown instead (for italics, superscript, etc.)
+
+```{r}
+modify_vlnplot<- function(obj, 
+                          feature, 
+                          pt.size = 0, 
+                          axis_text_size,
+                          panel_spacing,
+                          ...) {
+  p<- VlnPlot(obj, features = feature, pt.size = pt.size, ... )  + 
+    xlab("") + ylab(feature) + ggtitle("") + 
+    theme(legend.position = "none", 
+          axis.text.x = element_blank(), 
+          axis.ticks.x = element_blank(), 
+          axis.title.y = element_text(size = axis_text_size, angle = 0, vjust=0.5, hjust=0, face = "italic"), 
+          #axis.text.y = element_blank(), 
+          #axis.ticks.y = element_blank(),
+          axis.title.x = element_blank(),
+          plot.title = element_blank(),
+          plot.margin = margin(0,0,panel_spacing,0, "pt") ) 
+  return(p)
+}
+
+## extract the max value of the y axis
+extract_max<- function(p){
+  ymax<- max(ggplot_build(p)$layout$panel_scales_y[[1]]$range$range)
+  return(ceiling(ymax))
+}
+
+## main function
+StackedVlnPlot<- function(obj, features,
+                          axis_text_size=12,
+                          panel_spacing=0,
+                          y_3_pt=F,
+                          ...) {
+  require(Seurat)
+  require(patchwork)
+  require(ggplot2)
+  plot_list<- purrr::map(features, function(x) modify_vlnplot(obj = obj,feature = x, axis_text_size = axis_text_size, panel_spacing=panel_spacing, ...))
+  # Add back x-axis title to bottom plot
+  plot_list[[length(plot_list)]]<- plot_list[[length(plot_list)]] +
+    theme(axis.text.x=element_markdown(angle=45, hjust=1, vjust=1, size=axis_text_size),
+          axis.ticks.x = element_line())
+  
+  # change the y-axis tick to only max value 
+  ymaxs<- purrr::map_dbl(plot_list, extract_max)
+  plot_list<- purrr::map2(plot_list, ymaxs, function(x,y){
+    x$scales$scales <- list() #remove existing scale before replacement
+    if(y_3_pt){
+      y_breaks <- c(0, y*0.4, y*0.8)
+      y_lab <- c("0",round(y*0.4), round(y*0.8))
+    }
+    else{
+      y_breaks <- c(0, y*0.8)
+      y_lab <- c("0", round(y*0.8))
+    }
+    x +
+      scale_y_continuous(breaks = y_breaks, labels=y_lab, sec.axis = dup_axis()) +
+      expand_limits(y = y) +
+      theme(axis.text.y.left = element_blank(),
+            axis.text.y.right = element_text(size=8),
+            axis.ticks.y.left = element_blank(),
+            axis.title.y.right = element_blank())
+    })
+
+  p<- patchwork::wrap_plots(plotlist = plot_list,
+                            ncol = 1)
+  axislabel <- ggplot() +
+    labs(y="Expression Level") +
+    theme_classic() + 
+    guides(x = "none", y = "none") +
+    scale_y_continuous(position = "right")
+  
+  p <- wrap_plots(p, axislabel, ncol=2, widths = c(100,1))
+  return(p)
+}
+```
+
+
+#Tech comparison umap
+Make two UMAP plots, highlighting the two technologies used. Here we highlight the techs separately and change the point shape and alpha level to allow for adequate visualization of inDrops cells (because there are less of them than 10X).
+```{r}
+tech_comp_plot <- function(seur_obj, title="", group_var="Tech"){
+  p1 <- DimPlot(seur_obj, group.by=group_var, cols=c(alpha("gray", 0.05), "red")) + ggtitle("inDrops")+ guides(colour=F)
+  p2 <- DimPlot(seur_obj, group.by=group_var, cols=c("red", alpha("gray", 0.05))) + ggtitle("10X")+ guides(colour=F)
+  p1$layers[[1]]$aes_params$shape <- "."
+  p2$layers[[1]]$aes_params$shape <- "."
+  fin_p <- p1 + p2 + plot_annotation(title, theme=theme(plot.title=element_text(hjust=0.5, face="bold", size=18)))
+  return(fin_p)
+}
+```
+
+
+
+
+
+#Pseudobulk Counts
+```{r}
+generate_pseudobulk_counts <- function(seur_obj, clust_var, sample_var){
+  counts <- seur_obj@assays$RNA@counts
+  meta <- seur_obj@meta.data
+  
+  clusts <- unique(meta[,clust_var])
+  samps  <- unique(meta[,sample_var])
+  
+  options(stringsAsFactors = FALSE)
+  
+  new_meta <- data.frame()
+  pseudobulk_counts <- matrix(ncol=nrow(counts), nrow=0)
+  for(c in clusts){
+    for(s in samps){
+      cells <- rownames(subset(meta, (meta[,sample_var] == s & meta[,clust_var] == c)))
+      if (length(cells) > 0){
+        newname = paste(c, s, sep="_")
+        new_meta <- rbind(new_meta, c(newname, c, s, length(cells)))
+        samp_counts <- counts[,cells]
+        samp_pb <- rowSums(as.matrix(samp_counts))
+        pseudobulk_counts <- rbind(pseudobulk_counts, samp_pb)
+      }
+    }
+  }
+  colnames(new_meta) <- c("id", "cluster", "sample", "nCells")
+  rownames(pseudobulk_counts) <- new_meta$id
+  return(list("meta"=new_meta, "counts"=pseudobulk_counts))
+}
+```
+
+
+#MC Heatmap
+This function was written for the MC project. As such, it's somehwat customized for the three-cohort design. It could be modified for other projects relatively easily.
+
+The heatmap will have each tile separated diagonally, and logFC values for two-cohort comparisons plotted above/below the diagonal. "Significant" comparisons will be indicated with a black border.
+
+Expected input would be a data frame, with these columns:
+"cluster": cell cluster name
+"comp": reference cohort against which the comparison is made. Expects values to be "CD" and "H" for chronic diarrhea and Unaffected
+"gene":  gene name
+"logFC": logFC value for comparison
+"FDR": FDR value
+
+The resulting heatmap is only readable and practically useful for about 100 genes, and ideal for about 50 genes.
+
+```{r}
+make_heatmap_mc <- function(in_table, x_sep=0.03, y_sep=0.03, linesz=1, clust_group=NA, clust_group_sep=0.5){
+  #TODO: put in if-else statements to work around cases where clusters groups are not specified
+  
+  #if clust_group is included, it must be a data frame with columns "cluster" and "group". All clusters in in_table must have an entry in this table.
+  
+  #this function uses dplyr summarize. this is DIFFERENT than the plyr version of summarize. summarize is explicitly called from dplyr package, so it shouldn't cause issues if you also have plyr package loaded.
+  
+  require(scales)
+  require(tidyverse)
+  require(ggtext)
+  require(dplyr)
+  #remove clusters which don't have any comparison data:
+  to_keep <- clust_group$cluster[clust_group$cluster %in% unique(in_table[,"cluster"])]
+  clust_group <- subset(clust_group, cluster %in% to_keep)
+  
+  clust_group <- arrange(clust_group, group, cluster)
+  clusters <- clust_group$cluster
+  genes <- sort(unique(in_table$gene))
+  
+  #Function to generate polygon coordinates:
+  make_triangles <- function(clusters, genes, fc_table, coh, x_sep, y_sep, corner="UL", clust_group=NA, group_sep=0.5){
+    #corner is either "UL" for upper left, or "LR" for lower right
+    x_cur <- 0
+    y_cur <- 0
+    xpos <- c()
+    ypos <- c()
+    sig <- c()
+    g_ids <- c()
+    fills <- data.frame()
+    breaks_y <- c()
+    for(g in genes){
+      #initialize grouping variable:
+      prev_group <- subset(clust_group, cluster==clusters[1])[,"group"]
+      breaks_x <- c()
+      for(c in clusters){
+        c_group <- subset(clust_group, cluster==c)[,"group"]
+        if(c_group != prev_group){  #start of new group
+          x_cur <- x_cur + group_sep
+          prev_group <- c_group
+        }
+        cell_name <- paste(c, g, coh, sep="__")
+        if(corner=="LR"){
+          xpos <- append(xpos, c(x_cur + x_sep, x_cur + 1 - x_sep, x_cur + 1 - x_sep))
+          ypos <- append(ypos, c(y_cur + y_sep, y_cur + y_sep, y_cur + 1 - y_sep))
+        }
+        else{
+          xpos <- append(xpos, c(x_cur + x_sep, x_cur + x_sep, x_cur + 1 - x_sep))
+          ypos <- append(ypos, c(y_cur + y_sep, y_cur + 1 - y_sep, y_cur + 1 - y_sep))
+        }
+        g_ids <- append(g_ids, rep(cell_name, 3))
+        breaks_x <- append(breaks_x, x_cur + 0.5)
+        x_cur <- x_cur + 1
+        fill_val <- fc_table %>% dplyr::filter(gene==g & cluster==c & comp==coh) %>% select(logFC) %>% as.numeric()
+        fdr <- fc_table %>% dplyr::filter(gene==g & cluster==c & comp==coh) %>% select(FDR) %>% as.numeric()
+        if(!is.na(fdr)){
+          if(fdr <= 0.05){
+            sig <- append(sig, rep("Y", 3))
+          }
+          else{
+            sig <- append(sig, rep("N", 3))
+          }
+        }
+        else{
+          sig <- append(sig, rep("N", 3))
+        }
+        if(length(fill_val) > 1){
+          return("ERROR")
+        }
+        fills <- rbind(fills, c("group"=cell_name, "fill_val"=fill_val), stringsAsFactors=F)
+      }
+      x_cur <- 0
+      breaks_y <- append(breaks_y, y_cur + 0.5)
+      y_cur <- y_cur + 1
+    }
+    positions <- data.frame("group"=g_ids, "x"=xpos, "y"=ypos, "sig"=sig)
+    colnames(fills) <- c("group", "fill_val")
+    fills$fill_val <- as.numeric(fills$fill_val)
+    return(list("polygons"=merge(positions, fills, by="group"), "breaks_x" = breaks_x, "breaks_y"=breaks_y))
+  }
+  
+  #make Unaffected triangles:
+  h_poly <- make_triangles(clusters, genes, in_table, coh="H", x_sep=x_sep, y_sep=y_sep, corner="LR", clust_group = clust_group, group_sep=clust_group_sep)
+  #make CD triangles:
+  cd_poly <- make_triangles(clusters, genes, in_table, coh="CD", x_sep=x_sep, y_sep=y_sep, corner="UL", clust_group = clust_group, group_sep=clust_group_sep)
+  
+  #merge CD and H together:
+  all_poly <- rbind(h_poly[["polygons"]], cd_poly[["polygons"]])
+  
+  #bin the logFC values and change significance value to more informative label:
+  all_poly <- all_poly %>%
+    mutate(fillfactor=cut(fill_val, breaks=c(-Inf, -3, -2, -1, -0.5, 0.5, 1, 2, 3, Inf),
+                          labels=c("(-Inf, -3]", "(-3, -2]", "(-2, -1]", "(-1, -0.5]", "(-0.5, 0.5]", "(0.5, 1]", "(1, 2]", "(2, 3]", "(3, Inf]"))) %>%
+    # change level order
+    mutate(fillfactor=factor(as.character(fillfactor), levels=rev(levels(fillfactor)))) %>%
+    mutate(sigtxt=case_when(sig=="N"~"FDR > 0.05",
+                            sig=="Y"~"FDR <= 0.05"))
+  
+  x_breaks <- h_poly[["breaks_x"]]
+  y_breaks <- h_poly[["breaks_y"]]
+  
+  #Make polygons for the group labels, and get text coordinates:
+  g_x_pos <- c()
+  g_y_pos <- c()
+  gids <- c()
+  glabs <- data.frame()
+  g_y_min <- max(y_breaks + 0.5 - y_sep + y_sep)
+  g_y_max <- g_y_min + 1
+  group_nums <- clust_group %>% group_by(group) %>% dplyr::summarize(n=length(cluster))
+  x_cur <- 0
+  for(g in group_nums$group){
+    g_num <- group_nums %>% filter(group==g) %>% pull("n")
+    g_x_pos <- append(g_x_pos, c(x_cur + x_sep, rep(x_cur + g_num - x_sep, 2), x_cur + x_sep))
+    g_y_pos <- append(g_y_pos, c(rep(g_y_min, 2), rep(g_y_max, 2)))
+    gids <- append(gids, rep(g, 4))
+    glabs <- rbind(glabs, c("group"=g, "x"=x_cur + g_num/2, "y"=(g_y_max + g_y_min)/2))
+    x_cur <- x_cur + clust_group_sep + g_num
+  }
+  group_polys <- data.frame("group"=gids, "x"=g_x_pos, "y"=g_y_pos)
+  colnames(glabs) <- c("label", "x", "y")
+  glabs <- glabs %>% mutate(x=as.numeric(x), y=as.numeric(y))
+
+  #make plot:
+  g <- ggplot() + 
+    #Main triangles:
+    geom_polygon(data=all_poly, aes(fill = fillfactor, group = group, x = x, y = y)) +
+    #borderd to indicate significance:
+    geom_polygon(data=all_poly, aes(group = group, colour=sigtxt, x = x, y = y), size=linesz, fill=NA) +
+    #Group labels:
+    geom_polygon(data = group_polys, aes(x=x, y=y, group=group), fill="gray90") +
+    geom_richtext(data=glabs, aes(x=x, y=y, label=label), size=4, fontface="bold", fill = NA, label.color = NA, label.padding = grid::unit(rep(0, 4), "pt")) + 
+    #Custom axis labels/ticks
+    scale_x_continuous(name = "Cell Cluster",
+                       breaks = x_breaks,
+                       labels = clusters,
+                       expand = c(0,0.01)) + 
+    scale_y_continuous(name = "Gene",
+                       breaks = y_breaks,
+                       labels = genes,
+                       expand = c(0,0.01)) + 
+    #Few different scale options for fill coloring:
+    #scale_fill_continuous(name="logFC") + 
+    #scale_fill_gradient2(low = muted("blue"), high=muted("red"), name="LogFC") + 
+    scale_fill_brewer(palette = "RdBu", type = "div", na.value="grey90", drop=F, name="LogFC") +
+    #Kind of "hacky" but to force a legend with the triangle shapes, include two points out of visibility...
+    geom_point(x=-1, y=-1, aes(shape="\u25E4"))+ 
+    geom_point(x=-1, y=-1, aes(shape="\u25E2")) + 
+    scale_shape_manual(labels=c("Chronic\nDiarrhea", "Unaffected"),
+                       values=c("\u25E4","\u25E2"),
+                       name="Control\nCohort") +
+    guides(shape=guide_legend(override.aes = list(size=8, colour="gray"))) + 
+    #Legend to show how we marked significant clusters:
+    scale_colour_manual(breaks=c("FDR <= 0.05"), values=c("black", NA), name=NULL, drop=F) +
+    #Misc theme mods:
+    theme_minimal() +
+    theme(legend.margin=margin(grid::unit(0, "cm")),
+          legend.text=element_text(size=8),
+          axis.ticks=element_line(size=0.4),
+          plot.background=element_blank(),
+          panel.border=element_blank(),
+          axis.text.x = element_markdown(angle = 60, hjust=1),
+          axis.text.y = element_text(face="italic"),
+          panel.grid = element_blank())
+  
+  return(g)
+}
+```
+
+
+
+
+#MC Grouped Heatmap
+custom heatmap similar to above, except the rows are grouped.
+
+
+```{r}
+make_heatmap_mc_rowGroups_left <- function(in_table, x_sep=0.03, y_sep=0.03, linesz=1, clust_group=NA, clust_group_sep=0.5, gene_group=NULL, presorted=F, gsep_lwd=1){
+  #TODO: put in if-else statements to work around cases where clusters groups are not specified
+  
+  #if clust_group is included, it must be a data frame with columns "cluster" and "group". All clusters in in_table must have an entry in this table.
+  
+  #gene_group is a dataframe with columns "gene" and "group" mapping each gene name to the corresponding group they should cluster with.
+  
+  #if presorted is set to T, row order in heatmap will appear as in the gene_group data frame. Same gene can be included in multiple groups. However, having the same group name split into different non-contiguous regions is NOT supported or expected behavior (unless presorted is F, in which case the gene_group data frame will be re-arranged)
+  
+  #this function uses dplyr summarize. this is DIFFERENT than the plyr version of summarize. summarize is explicitly called from dplyr package, so it shouldn't cause issues if you also have plyr package loaded.
+  
+  require(scales)
+  require(tidyverse)
+  require(ggtext)
+  require(dplyr)
+  #remove clusters which don't have any comparison data:
+  to_keep <- clust_group$cluster[clust_group$cluster %in% unique(in_table[,"cluster"])]
+  clust_group <- subset(clust_group, cluster %in% to_keep)
+  
+  clust_group <- arrange(clust_group, group, cluster)
+  clusters <- clust_group$cluster
+  if(is.null(gene_group)){
+    genes <- sort(unique(in_table$gene))
+  }
+  else{
+    if(!presorted){
+      gene_group <- arrange(gene_group, group, gene)
+    }
+    genes <- gene_group[,"gene"]
+  }
+  
+  #Function to generate polygon coordinates:
+  make_triangles <- function(clusters, genes, fc_table, coh, x_sep, y_sep, corner="UL", clust_group=NA, group_sep=0.5, gene_group=NULL){
+    #corner is either "UL" for upper left, or "LR" for lower right
+    x_cur <- 0
+    y_cur <- 0
+    xpos <- c()
+    ypos <- c()
+    sig <- c()
+    g_ids <- c()
+    fills <- data.frame()
+    breaks_y <- c()
+    y_seps <- c()
+    x_seps <- c()
+    #initialize gene grouping variable:
+    if(!is.null(gene_group)){
+      genes <- gene_group[,"gene"]
+      prev_gene_group <- gene_group[1,"group"]
+    }
+    for(i in c(1:length(genes))){
+      g <- genes[i]
+      g_group <- gene_group[i,"group"]
+      if(g_group != prev_gene_group){  #start of new group
+        y_seps <- c(y_seps, y_cur + (group_sep / 2))
+        y_cur <- y_cur + group_sep
+        prev_gene_group <- g_group
+      }
+      #initialize grouping variable:
+      prev_group <- subset(clust_group, cluster==clusters[1])[,"group"]
+      breaks_x <- c()
+      for(c in clusters){
+        c_group <- subset(clust_group, cluster==c)[,"group"]
+        if(c_group != prev_group){  #start of new group
+          x_seps <- c(x_seps, x_cur + (group_sep / 2))
+          x_cur <- x_cur + group_sep
+          prev_group <- c_group
+        }
+        cell_name <- paste(c, g, coh, g_group, sep="__")
+        if(corner=="LR"){
+          xpos <- append(xpos, c(x_cur + x_sep, x_cur + 1 - x_sep, x_cur + 1 - x_sep))
+          ypos <- append(ypos, c(y_cur + y_sep, y_cur + y_sep, y_cur + 1 - y_sep))
+        }
+        else{
+          xpos <- append(xpos, c(x_cur + x_sep, x_cur + x_sep, x_cur + 1 - x_sep))
+          ypos <- append(ypos, c(y_cur + y_sep, y_cur + 1 - y_sep, y_cur + 1 - y_sep))
+        }
+        g_ids <- append(g_ids, rep(cell_name, 3))
+        breaks_x <- append(breaks_x, x_cur + 0.5)
+        x_cur <- x_cur + 1
+        fill_val <- fc_table %>% dplyr::filter(gene==g & cluster==c & comp==coh) %>% select(logFC) %>% as.numeric()
+        fdr <- fc_table %>% dplyr::filter(gene==g & cluster==c & comp==coh) %>% select(FDR) %>% as.numeric()
+        if(!is.na(fdr)){
+          if(fdr <= 0.05){
+            sig <- append(sig, rep("Y", 3))
+          }
+          else{
+            sig <- append(sig, rep("N", 3))
+          }
+        }
+        else{
+          sig <- append(sig, rep("N", 3))
+        }
+        if(length(fill_val) > 1){
+          return("ERROR")
+        }
+        fills <- rbind(fills, c("group"=cell_name, "fill_val"=fill_val), stringsAsFactors=F)
+      }
+      x_cur <- 0
+      breaks_y <- append(breaks_y, y_cur + 0.5)
+      y_cur <- y_cur + 1
+    }
+    positions <- data.frame("group"=g_ids, "x"=xpos, "y"=ypos, "sig"=sig)
+    colnames(fills) <- c("group", "fill_val")
+    fills$fill_val <- as.numeric(fills$fill_val)
+    return(list("polygons"=merge(positions, fills, by="group"), "breaks_x" = breaks_x, "breaks_y"=breaks_y, "seps_x"=x_seps, "seps_y"=y_seps))
+  }
+  
+  #make Unaffected triangles:
+  h_poly <- make_triangles(clusters, genes, in_table, coh="H", x_sep=x_sep, y_sep=y_sep, corner="LR", clust_group = clust_group, group_sep=clust_group_sep, gene_group = gene_group)
+  #make CD triangles:
+  cd_poly <- make_triangles(clusters, genes, in_table, coh="CD", x_sep=x_sep, y_sep=y_sep, corner="UL", clust_group = clust_group, group_sep=clust_group_sep, gene_group = gene_group)
+  
+  #merge CD and H together:
+  all_poly <- rbind(h_poly[["polygons"]], cd_poly[["polygons"]])
+  
+  #bin the logFC values and change significance value to more informative label:
+  all_poly <- all_poly %>%
+    mutate(fillfactor=cut(fill_val, breaks=c(-Inf, -3, -2, -1, -0.5, 0.5, 1, 2, 3, Inf),
+                          labels=c("(-Inf, -3]", "(-3, -2]", "(-2, -1]", "(-1, -0.5]", "(-0.5, 0.5]", "(0.5, 1]", "(1, 2]", "(2, 3]", "(3, Inf]"))) %>%
+    # change level order
+    mutate(fillfactor=factor(as.character(fillfactor), levels=rev(levels(fillfactor)))) %>%
+    mutate(sigtxt=case_when(sig=="N"~"FDR > 0.05",
+                            sig=="Y"~"FDR <= 0.05"))
+  
+  #x and y axis breaks/ticks:
+  x_breaks <- h_poly[["breaks_x"]]
+  y_breaks <- h_poly[["breaks_y"]]
+  # group separation breaks in x and y axis:
+  x_seps <- h_poly[["seps_x"]]
+  y_seps <- h_poly[["seps_y"]]
+  
+  #Make polygons for the group labels, and get text coordinates:
+  g_x_pos <- c()
+  g_y_pos <- c()
+  gids <- c()
+  glabs <- data.frame()
+  g_y_min <- max(y_breaks + 0.5 - y_sep + y_sep)
+  g_y_max <- g_y_min + 1
+  group_nums <- clust_group %>% group_by(group) %>% dplyr::summarize(n=length(cluster))
+  x_cur <- 0
+  for(g in group_nums$group){
+    g_num <- group_nums %>% filter(group==g) %>% pull("n")
+    g_x_pos <- append(g_x_pos, c(x_cur + x_sep, rep(x_cur + g_num - x_sep, 2), x_cur + x_sep))
+    g_y_pos <- append(g_y_pos, c(rep(g_y_min, 2), rep(g_y_max, 2)))
+    gids <- append(gids, rep(g, 4))
+    glabs <- rbind(glabs, c("group"=g, "x"=x_cur + g_num/2, "y"=(g_y_max + g_y_min)/2))
+    x_cur <- x_cur + clust_group_sep + g_num
+  }
+  group_polys <- data.frame("group"=gids, "x"=g_x_pos, "y"=g_y_pos)
+  colnames(glabs) <- c("label", "x", "y")
+  glabs <- glabs %>% mutate(x=as.numeric(x), y=as.numeric(y))
+  
+  #make text and lines for the gene groupings:
+  if(!is.null(gene_group)){
+    gene_glabs <- data.frame()
+    gene_line_y <- c()
+    group_nums <- gene_group %>% group_by(group) %>% dplyr::summarize(n=length(gene))
+    y_cur <- 0
+    prev_gene_group <- ""
+    for(i in c(1:length(gene_group[,"gene"]))){
+      g_group <- gene_group[i,"group"]
+      if(g_group != prev_gene_group){  #start of new group
+        g <- g_group
+        prev_gene_group <- g_group
+        g_num <- group_nums %>% filter(group==g) %>% pull("n")
+        gene_glabs <- rbind(gene_glabs, c("group"=g, "x"=0.25, "y"=y_cur + g_num/2))
+        # indicator line will go to half-way through the last rows in each group
+        gene_line_y <- append(gene_line_y, c(y_cur + y_sep + 0.5, y_cur + g_num - y_sep - 0.5, NA))
+        y_cur <- y_cur + clust_group_sep + g_num
+      }
+    }
+    #remove last NA value:
+    gene_line_y <- gene_line_y[-c(length(gene_line_y))]
+    gene_line <- data.frame("y" = gene_line_y, "x" = 0.95)
+    colnames(gene_glabs) <- c("label", "x", "y")
+    gene_glabs <- gene_glabs %>% mutate(x=as.numeric(x), y=as.numeric(y))
+  }
+
+  #make plot:
+  g <- ggplot() + 
+    #Main triangles:
+    geom_polygon(data=all_poly, aes(fill = fillfactor, group = group, x = x, y = y)) +
+    #borderd to indicate significance:
+    geom_polygon(data=all_poly, aes(group = group, colour=sigtxt, x = x, y = y), size=linesz, fill=NA) +
+    #Group labels:
+    geom_polygon(data = group_polys, aes(x=x, y=y, group=group), fill="gray90") +
+    geom_richtext(data=glabs, aes(x=x, y=y, label=label), size=4, fontface="bold", fill = NA, label.color = NA, label.padding = grid::unit(rep(0, 4), "pt")) +
+    #Custom axis labels/ticks
+    scale_x_continuous(name = "Cell Cluster",
+                       breaks = x_breaks,
+                       labels = clusters,
+                       expand = c(0,0.01)) + 
+    scale_y_continuous(name = "Gene",
+                       breaks = y_breaks,
+                       labels = genes,
+                       expand = c(0,0.01)) + 
+    geom_vline(xintercept = x_seps, lwd=gsep_lwd*0.5) +
+    geom_hline(yintercept = y_seps, lwd=gsep_lwd*0.5) +
+    #Few different scale options for fill coloring:
+    #scale_fill_continuous(name="logFC") + 
+    #scale_fill_gradient2(low = muted("blue"), high=muted("red"), name="LogFC") + 
+    scale_fill_brewer(palette = "RdBu", type = "div", na.value="grey90", drop=F, name="LogFC") +
+    #Kind of "hacky" but to force a legend with the triangle shapes, include two points out of visibility...
+    geom_point(x=-1, y=-1, aes(shape="\u25E4"))+ 
+    geom_point(x=-1, y=-1, aes(shape="\u25E2")) + 
+    scale_shape_manual(labels=c("Chronic\nDiarrhea", "Unaffected"),
+                       values=c("\u25E4","\u25E2"),
+                       name="Control\nCohort") +
+    guides(shape=guide_legend(override.aes = list(size=8, colour="gray"))) + 
+    #Legend to show how we marked significant clusters:
+    scale_colour_manual(breaks=c("FDR <= 0.05"), values=c("black", NA), name=NULL, drop=F) +
+    #Misc theme mods:
+    theme_minimal() +
+    theme(legend.margin=margin(grid::unit(0, "cm")),
+          legend.text=element_text(size=8),
+          axis.ticks=element_line(size=0.4),
+          plot.background=element_blank(),
+          panel.border=element_blank(),
+          axis.text.x = element_markdown(angle = 60, hjust=1),
+          axis.text.y = element_text(face="italic"),
+          panel.grid = element_blank(),
+          axis.title.y=element_blank(),
+          plot.margin = margin(l=0))
+  if(!is.null(gene_group)){
+    require(patchwork)
+    p <- ggplot(gene_glabs) + geom_text( aes(y=y, x=x, label=label), size=4, fontface="bold", angle=90, vjust=0) + xlim(-10, 1) + 
+      geom_line(data=gene_line, aes(x=x, y=y), lwd=1) +
+      #same scale as main heatmap, so that group labels match up
+      scale_y_continuous(breaks = y_breaks,
+                       labels = genes,
+                       limits = c(0, g_y_max),
+                       expand = c(0,0.01)) +
+      theme_minimal() +
+      theme(plot.background=element_blank(),
+            panel.border=element_blank(),
+            panel.grid = element_blank(),
+            axis.text = element_blank(),
+            axis.title = element_blank(),
+            plot.margin = margin(r=5))
+    n_clust <- length(unique(in_table$cluster))
+    fin_plot <- p + g + plot_layout(widths = c(2, n_clust))
+  }
+  else{
+    fin_plot <- g
+  }
+  return(fin_plot)
+}
+
+
+```
+
+
+
+
+
